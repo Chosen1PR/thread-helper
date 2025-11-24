@@ -30,7 +30,9 @@ Devvit.addSettings([
   },
   {
     type: "group",
-    label: "Thread Settings",
+    label: "Thread/Post Settings",
+    helpText:
+      "Leave below settings blank to disable.",
     fields: [
       // Config setting for post flair list
       {
@@ -50,6 +52,46 @@ Devvit.addSettings([
         helpText:
           "Comma (,) delimited list of post title keywords or phrases (case-sensitive) for threads where you want to limit comments.",
         defaultValue: "",
+        scope: "installation",
+      },
+      // Config setting for domain whitelist
+      {
+        type: "paragraph",
+        name: "domain-list",
+        label: "Domain list",
+        helpText:
+          `Comma (,) delimited list of acceptable link domains for referral links. You can also use slightly more complex phrases like "example.com/refer/" (without quotes).`,
+        defaultValue: "",
+        scope: "installation",
+      },
+      // Config setting for removing posts outside of thread
+      {
+        type: "boolean",
+        name: "remove-posts",
+        label: "Remove domain-matching posts",
+        helpText:
+          "Remove posts outside of the thread that contain a link from one of the above domains.",
+        defaultValue: false,
+        scope: "installation",
+      },
+      // Config setting for marking removed posts as spam
+      {
+        type: "boolean",
+        name: "remove-posts-as-spam",
+        label: "Remove posts as spam",
+        helpText:
+          `If enabled, "Spam" will be the removal reason for removed posts.`,
+        defaultValue: false,
+        scope: "installation",
+      },
+      // Config setting for comment on posts outside of thread
+      {
+        type: "boolean",
+        name: "comment-on-posts",
+        label: "Comment on posts",
+        helpText:
+          "Comment on posts outside of the thread that contain a link from one of the above domains, with a message saying to use the designated thread.",
+        defaultValue: false,
         scope: "installation",
       },
     ],
@@ -98,7 +140,7 @@ Devvit.addSettings([
       {
         type: "number",
         name: "min-karma",
-        label: "Minimum user karma for commenting",
+        label: "Minimum user karma",
         //defaultValue: 0,
         defaultValue: undefined,
         helpText:
@@ -109,7 +151,7 @@ Devvit.addSettings([
       {
         type: "number",
         name: "min-post-karma",
-        label: "Minimum post karma for commenting",
+        label: "Minimum post karma",
         //defaultValue: 0,
         helpText:
           "Minimum post karma a user must have to comment on threads where comment limits are enforced.",
@@ -119,7 +161,7 @@ Devvit.addSettings([
       {
         type: "number",
         name: "min-comment-karma",
-        label: "Minimum comment karma for commenting",
+        label: "Minimum comment karma",
         //defaultValue: 0,
         helpText:
           "Minimum comment karma a user must have to comment on threads where comment limits are enforced.",
@@ -129,10 +171,29 @@ Devvit.addSettings([
       {
         type: "number",
         name: "min-account-age-days",
-        label: "Minimum account age (days) for commenting",
+        label: "Minimum account age (days)",
         //defaultValue: 0,
         helpText:
           "Minimum account age in days a user must have to comment on threads where comment limits are enforced.",
+        scope: "installation",
+      },
+      // Config setting for user flair requirement
+      {
+        type: "boolean",
+        name: "require-user-flair",
+        label: "Require user flair",
+        defaultValue: false,
+        helpText:
+          "If enabled, only flaired users will be allowed to comment on threads where comment limits are enforced.",
+        scope: "installation",
+      },
+      {
+        type: "paragraph",
+        name: "user-flair-css-list",
+        label: "User flair CSS class list",
+        defaultValue: "",
+        helpText:
+          "Comma (,) delimited list of CSS classes for flairs which users must have to comment on threads. Leave blank to allow any flair.",
         scope: "installation",
       },
     ],
@@ -140,35 +201,34 @@ Devvit.addSettings([
   {
     type: "group",
     label: "Comment Content Requirements",
-    helpText: "Leave below settings blank to disable.",
     fields: [
+      // Config setting for requiring domain-matching comments
+      {
+        type: "boolean",
+        name: "require-domains",
+        label: "Require links from domain list",
+        helpText:
+          "If enabled, comments in thread must contain at least one link from the domain list above to avoid removal.",
+        defaultValue: false,
+        scope: "installation",
+      },
+      // Config setting for removing domain-matching comments outside of thread
+      {
+        type: "boolean",
+        name: "remove-outside-comments",
+        label: "Remove links outside of thread",
+        helpText:
+          "If enabled, comments outside of the thread (elsewhere in the subreddit) that contain one of the listed domains will be removed.",
+        defaultValue: false,
+        scope: "installation",
+      },
       // Config setting for removing comments with images
       {
         type: "boolean",
         name: "remove-images",
         label: "Remove comments with images",
         helpText:
-          "Removes comments that contain images or reaction gifs. Not necessary if your subreddit does not allow images in comments.",
-        defaultValue: false,
-        scope: "installation",
-      },
-      // Config setting for domain whitelist
-      {
-        type: "paragraph",
-        name: "domain-list",
-        label: "Domain list",
-        helpText:
-          "Comma (,) delimited list of link domains, at least one of which must be in comments to avoid removal. Note: You can also use this field to define specific words or phrases that must be in comments.",
-        defaultValue: "",
-        scope: "installation",
-      },
-      // Config setting for removing domain-matching comments outside of thread
-      {
-        type: "boolean",
-        name: "domains-outside",
-        label: "Remove domain-matching comments outside of thread",
-        helpText:
-          "If enabled, comments outside of the thread (elsewhere in the subreddit) that match one of the listed domains will be removed.",
+          "Removes comments in thread that contain images or reaction gifs. Not necessary if your subreddit does not allow images in comments.",
         defaultValue: false,
         scope: "installation",
       },
@@ -178,7 +238,7 @@ Devvit.addSettings([
         name: "required-regex",
         label: "Required comment regex pattern",
         helpText:
-          "A regex pattern that comments must match to avoid removal.",
+          "A regex pattern that comments in thread must match to avoid removal. Leave blank to disable.",
         defaultValue: "",
         scope: "installation",
       },
@@ -188,7 +248,7 @@ Devvit.addSettings([
         name: "restricted-regex",
         label: "Restricted comment regex pattern",
         helpText:
-          "A regex pattern that comments must not match to avoid removal.",
+          "A regex pattern that comments in thread must not match to avoid removal. Leave blank to disable.",
         defaultValue: "",
         scope: "installation",
       },
@@ -210,7 +270,7 @@ Devvit.addSettings([
     name: "mods-exempt",
     label: "Moderators exempt",
     defaultValue: true,
-    helpText: "Disable for testing, but most mods should leave this enabled.",
+    helpText: "Disable for testing or if your subreddit has many mods, as the latter can affect performance.",
     scope: "installation",
   },
 ]);
@@ -256,8 +316,8 @@ Devvit.addTrigger({
     if (!forThisPostFlair && !forThisPostTitle) {
       //return; // Comment later when ready to implement this feature
       // If this post does not match any flair or title keywords, check if the comment is allowed outside of the thread.
-      const domainsOutside = await context.settings.get("domains-outside")!;
-      if (domainsOutside) {
+      const removeOutsideComments = await context.settings.get("remove-outside-comments")!;
+      if (removeOutsideComments) {
         // If the setting is enabled, check if the comment matches any of the domains.
         const domainList = (await context.settings.get("domain-list")) as string;
         if (domainList != undefined && domainList.trim() != "") {
@@ -265,7 +325,7 @@ Devvit.addTrigger({
           var containsDomain = false;
           var domains = domainList.trim().split(",");
           for (let i = 0; i < domains.length; i++) {
-            const domain = domains[i].trim();
+            const domain = domains[i].trim().toLowerCase();
             if (domain != "" && event.comment?.body!.includes(domain)) {
               containsDomain = true;
               break;
@@ -292,14 +352,15 @@ Devvit.addTrigger({
     const removeReplies = await context.settings.get("remove-replies")!; //check if removing replies enabled
     // Get comment author info and check if they are a mod
     const userId = event.author?.id!;
-    const isMod = await authorIsMod(userId, context);
+    const authorIsMod = await userIsMod(userId, context);
     const modsExempt = await context.settings.get("mods-exempt");
-    const passedModCheck = !(isMod && modsExempt);
+    const passedModCheck = !(authorIsMod && modsExempt);
     // Beginning of temporary variables that will be needed if PM is sent to user
     var commentRemoved = false;
     var commentRemovedReason = "";
     const postId = event.post?.id!;
     const commentId = event.comment?.id!;
+    
     // If everything looks good, this is where we remove duplicate comments
     if (removeDuplicates) {
       // Step 1: Get user's comment count in post.
@@ -322,8 +383,9 @@ Devvit.addTrigger({
       // Even if this comment was removed in Step 2, any new comments will still increment the comment count for this user.
       // For the count to be decremented, the user must delete their comment and "update with comment deletes" must be enabled.
     }
+    
     // If the comment was not removed in the previous step, check if we need to remove replies.
-    if (removeReplies && !commentRemoved) {
+    if (removeReplies && !commentRemoved && passedModCheck) {
       //console.log('Checking if comment is a reply');
       var counter = 1;
       var id = event.comment?.parentId!;
@@ -336,7 +398,7 @@ Devvit.addTrigger({
         counter++;
       }
       // If the limit of comment tree growth has been reached, remove comment
-      if (counter > 1 && passedModCheck) {
+      if (counter > 1) {
         // Mod check here will depend on the "mods exempt" config setting.
         context.reddit.remove(commentId, false);
         commentRemoved = true;
@@ -344,50 +406,84 @@ Devvit.addTrigger({
       }
     }
     // If comment was still not removed, check user requirements
-    if (!commentRemoved) {
+    if (!commentRemoved && passedModCheck) {
       const minKarma = (await context.settings.get("min-karma")!) as number; //get minimum user karma
       const minPostKarma = (await context.settings.get("min-subreddit-karma")!) as number; //get minimum post karma
       const minCommentKarma = (await context.settings.get("min-comment-karma")!) as number; //get minimum comment karma
       const minAccountAgeDays = (await context.settings.get("min-account-age-days")!) as number; //get minimum account age
+      const requireFlair = await context.settings.get("require-user-flair")!; //get user flair requirement
       const author = await context.reddit.getUserById(userId)!;
       const linkKarma = author?.linkKarma!;
       const commentKarma = author?.commentKarma!;
       const accountCreated = author?.createdAt!;
+      // Check combined post/comment karma requirement
       if (isValidKarmaSetting(minKarma)) {
         const totalKarma = linkKarma + commentKarma;
-        if (totalKarma < minKarma && passedModCheck) {
+        if (totalKarma < minKarma) {
           await context.reddit.remove(commentId, false);
           commentRemoved = true;
           commentRemovedReason = "karma";
         }
       }
+      // Check post karma requirement
       if (isValidKarmaSetting(minPostKarma) && !commentRemoved) {
-        if (linkKarma < minPostKarma && passedModCheck) {
+        if (linkKarma < minPostKarma) {
           await context.reddit.remove(commentId, false);
           commentRemoved = true;
           commentRemovedReason = "post-karma";
         }
       }
+      // Check comment karma requirement
       if (isValidKarmaSetting(minCommentKarma) && !commentRemoved) {
-        if (commentKarma < minCommentKarma && passedModCheck) {
+        if (commentKarma < minCommentKarma) {
           await context.reddit.remove(commentId, false);
           commentRemoved = true;
           commentRemovedReason = "comment-karma";
         }
       }
+      // Check account age requirement
       if (isValidAccountAgeSetting(minAccountAgeDays) && !commentRemoved) {
         const currentDate = new Date();
         const accountAgeMs = currentDate.getTime() - accountCreated.getTime();
         const accountAgeDays = accountAgeMs / (1000 * 60 * 60 * 24);
-        if (accountAgeDays < minAccountAgeDays && passedModCheck) {
+        if (accountAgeDays < minAccountAgeDays) {
           await context.reddit.remove(commentId, false);
           commentRemoved = true;
           commentRemovedReason = "age";
         }
       }
+      // Check user flair requirement
+      if (requireFlair && !commentRemoved) {
+        const userFlair = event.author?.flair;
+        if (userFlair) { // User has flair
+          const userFlairCss = userFlair.cssClass ?? "";
+          const userFlairCssList = (await context.settings.get("user-flair-css-list")) as string;
+          if (userFlairCssList != undefined && userFlairCssList.trim() != "") {
+            var flairMatch = false;
+            var flairClasses = userFlairCssList.trim().split(",");
+            for (let i = 0; i < flairClasses.length; i++) {
+              const flairCssFromList = flairClasses[i].trim();
+              if (flairCssFromList != "" && userFlairCss == flairCssFromList) {
+                flairMatch = true;
+                break;
+              }
+            }
+            if (!flairMatch) {
+              await context.reddit.remove(commentId, false);
+              commentRemoved = true;
+              commentRemovedReason = "flair-specific";
+            }
+          }
+        }
+        else { // User does not have flair
+          await context.reddit.remove(commentId, false);
+          commentRemoved = true;
+          commentRemovedReason = "flair";
+        }
+      }
     }
     // If comment still not removed, check comment content
-    if (!commentRemoved) {
+    if (!commentRemoved && passedModCheck) {
       const commentBody = event.comment?.body!.toString() ?? "";
       // Check if comment contains images
       const removeImages = await context.settings.get("remove-images")!;
@@ -396,30 +492,33 @@ Devvit.addTrigger({
         //console.log('Checking comment for images/gifs');
         const imageRegex = /!\[(img|gif)\]\(([-\w\|]+)\)/;
         const containsImage = imageRegex.test(commentBody);
-        //if (event.comment?.hasMedia && passedModCheck) {
-        if (containsImage && passedModCheck) {
+        //if (event.comment?.hasMedia) {
+        if (containsImage) {
           //console.log('Comment contains images/gifs, removing comment');
           await context.reddit.remove(event.comment?.id!, false);
           commentRemoved = true;
           commentRemovedReason = "image";
         }
       }
-      // If comment still not removed, check if comment contains whitelisted domain(s)
-      const domainList = (await context.settings.get("domain-list")) as string;
-      if (domainList != undefined && domainList.trim() != "" && !commentRemoved) {
-        var containsDomain = false;
-        var domains = domainList.trim().split(",");
-        for (let i = 0; i < domains.length; i++) {
-          const domain = domains[i].trim();
-          if (domain != "" && commentBody.includes(domain)) {
-            containsDomain = true;
-            break;
+      // If comment still not removed, check if comment contains required domain
+      const requireDomains = await context.settings.get("require-domains")!;
+      if (requireDomains) {
+        const domainList = (await context.settings.get("domain-list")) as string;
+        if (domainList != undefined && domainList.trim() != "" && !commentRemoved) {
+          var containsDomain = false;
+          var domains = domainList.trim().split(",");
+          for (let i = 0; i < domains.length; i++) {
+            const domain = domains[i].trim().toLowerCase();
+            if (domain != "" && commentBody.includes(domain)) {
+              containsDomain = true;
+              break;
+            }
           }
-        }
-        if (!containsDomain && passedModCheck) {
-          await context.reddit.remove(event.comment?.id!, false);
-          commentRemoved = true;
-          commentRemovedReason = "domain";
+          if (!containsDomain) {
+            await context.reddit.remove(event.comment?.id!, false);
+            commentRemoved = true;
+            commentRemovedReason = "domain";
+          }
         }
       }
       // If comment still not removed, check if comment matches required regex pattern
@@ -432,7 +531,7 @@ Devvit.addTrigger({
         !commentRemoved
       ) {
         const commentBody = event.comment?.body!.toString() ?? "";
-        if (!matchesRegex(commentBody, requiredRegex) && passedModCheck) {
+        if (!matchesRegex(commentBody, requiredRegex)) {
           await context.reddit.remove(event.comment?.id!, false);
           commentRemoved = true;
           commentRemovedReason = "regex";
@@ -448,7 +547,7 @@ Devvit.addTrigger({
         !commentRemoved
       ) {
         const commentBody = event.comment?.body!.toString() ?? "";
-        if (matchesRegex(commentBody, restrictedRegex) && passedModCheck) {
+        if (matchesRegex(commentBody, restrictedRegex)) {
           await context.reddit.remove(event.comment?.id!, false);
           commentRemoved = true;
           commentRemovedReason = "regex";
@@ -501,6 +600,57 @@ Devvit.addTrigger({
       else if (commentCount > 1)
         // If there are more comments, just decrement the count by 1.
         await context.redis.hIncrBy(key, userId, -1);
+    }
+  },
+});
+
+// Remove posts outside of thread: post trigger handler
+Devvit.addTrigger({
+  event: "PostCreate",
+  onEvent: async (event, context) => {
+    // Check if app is enabled
+    const appEnabled = await context.settings.get("enable-app");
+    if (!appEnabled) return; // If app is not enabled, don't do anything.
+    const modsExempt = await context.settings.get("mods-exempt");
+    const authorIsMod = await userIsMod(event.author?.id!, context);
+    if (authorIsMod && modsExempt) return; // If author is a mod and mods are exempt, don't do anything.
+    
+    const commentOnPosts = await context.settings.get("comment-on-posts")!;
+    const removePosts = await context.settings.get("remove-posts")!;
+    // Check if we need to comment on posts outside of thread
+    if (commentOnPosts) {
+      var commentText = "";
+      if (removePosts)
+        commentText = `Your post was removed because it contains a link from a domain that is restricted to an already existing thread.\n\nPlease post such links only in the designated thread.`;
+      else
+        commentText = `Please note that posts containing links from certain domains are restricted to an already existing thread.\n\nPlease post such links only in the designated thread.`;
+      const newComment = await context.reddit.submitComment({id: event.post?.id!, text: commentText});
+      await newComment.distinguish(true); // always distinguish as mod and pin comment
+      await newComment.lock(); // always lock comment
+    }
+    // Check if we need to remove posts outside of thread
+    if (removePosts) {
+      // Check post content for link from domain list
+      const domainList = (await context.settings.get("domain-list")) as string;
+      if (domainList != undefined && domainList.trim() != "") {
+        var containsDomain = false;
+        const postTitle = event.post?.title!;
+        const postBody = event.post?.selftext!;
+        const postLink = event.post?.url!;
+        var domains = domainList.trim().split(",");
+        for (let i = 0; i < domains.length; i++) {
+          const domain = domains[i].trim().toLowerCase();
+          if (postTitle.includes(domain) || postBody.includes(domain) || postLink.includes(domain)) {
+            containsDomain = true;
+            break;
+          }
+        }
+        // If the post contains a listed domain, remove it and optionally mark it as spam.
+        if (containsDomain) {
+          const removeAsSpam = (await context.settings.get("remove-posts-as-spam")!) as boolean;
+          await context.reddit.remove(event.post?.id!, removeAsSpam);
+        }
+      }
     }
   },
 });
@@ -601,7 +751,7 @@ async function pmUserOutsideThread(
   context: TriggerContext
 ) {
   const subjectText = `Your comment in r/${subredditName} was removed`;
-  var messageText = `Hi, [your comment](${commentLink}) in [this post](${postLink}) was removed because it was identified as being outside of the allowed thread.`;
+  var messageText = `Hi, [your comment](${commentLink}) in [this post](${postLink}) was removed because it was identified as being outside of the designated thread.`;
   const inboxDisclaimer = `\n\n*This inbox is not monitored. If you have any questions, please message the moderators of r/${subredditName}.*`;
   messageText = messageText + inboxDisclaimer;
   const thisUser = await context.reddit.getUserById(userId);
@@ -654,15 +804,13 @@ function containsTitle(title: string, titleList: string) {
 }
 
 // Helper function for determining if comment author is a moderator
-async function authorIsMod(userId: string, context: TriggerContext) {
-  const subreddit = await context.reddit.getCurrentSubredditName()!;
-  const modList = context.reddit.getModerators({ subredditName: subreddit }!);
+async function userIsMod(userId: string, context: TriggerContext) {
+  const modList = context.reddit.getModerators({ subredditName: context.subredditName! }!);
   const mods = await modList.all();
   var isMod = false;
   //for each mod in the list, check if their user id matches the comment author's user id
   for (let i = 0; i < mods.length; i++) {
-    const modId = mods[i].id;
-    if (userId == modId) {
+    if (userId == mods[i].id) {
       isMod = true;
       break;
     }
@@ -692,9 +840,15 @@ function getReasonForRemoval(reasonWord: string) {
   } else if (reasonWord == "age") {
     reason +=
       "- You do not meet the minimum account age requirement to comment on this post.";
+  } else if (reasonWord == "flair") {
+    reason +=
+      "- You must have user flair to comment on this post.";
+  } else if (reasonWord == "flair-specific") {
+    reason +=
+      "- You do not have the required user flair to comment on this post.";
   } else if (reasonWord == "domain") {
     reason +=
-      "- Your comment does not contain any of the required link domains or words/phrases.";
+      "- Your comment does not contain any of the required link domains.";
   } else if (reasonWord == "regex") {
     reason += "- Your comment does not match the required format.";
   }
@@ -706,10 +860,10 @@ function getReasonScope(forThisPostFlair: boolean, forThisPostTitle: boolean) {
   var scope = "";
   if (forThisPostFlair)
     scope +=
-      " Currently, this limit applies across all posts with this post's flair.";
+      " Currently, this limit or requirement applies across all posts with this post's flair.";
   else if (forThisPostTitle)
     scope +=
-      " Currently, this limit applies across all posts with a similar post title.";
+      " Currently, this limit or requirement applies across all posts with a similar post title.";
   return scope;
 }
 

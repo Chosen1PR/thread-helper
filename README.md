@@ -4,28 +4,39 @@ Do you have referral megathreads in your community for certain products or servi
 
 - Limit users to one comment per referral thread.
 - Disable comment replies so that only top-level comments are allowed.
-- Disable images and reaction gifs in comments, but only for referral threads.
-- Require a minimum post karma, comment karma, and/or combined karma to comment in referral threads.
-- Define a list of acceptable link domains for referral links. Comments inside the thread that don't contain a link from one of these domains will be removed.
+- Disable images and reaction gifs in comments only in referral threads.
+- Require a minimum post karma, comment karma, and/or combined karma to comment in referral threads. These user requirements are hidden and never publicly exposed.
+- Allow only flaired users to comment in referral threads, and optionally define a list of required flair CSS classes.
+- Define a list of acceptable link domains for referral links.
+- Require links in thread comments.
 - Remove comments from outside the thread that contain a referral link.
-- Define regexes that comments must have or must not have.
-- Configure whether or not to message users privately from the bot account (not modmail) when their comment is removed and explain why.
+- Define regexes that comments must have or must not match.
+- Optionally message users privately from the bot account (not modmail) when their comment is removed and explain why.
+- Remove posts that contain referral links.
+- Optionally comment on posts that contain referral links.
+
+For slightly more comment removal versatility, feel free to also check out my other app [Diverse Comments](https://developers.reddit.com/apps/diverse-comments)!
 
 ---
 
 ## Changelog
 
-### [0.0.9] Initial version (2025-11-23)
+### [0.0.11] Initial version (2025-11-24)
 
 #### Features
 
 - Limit users to one comment per referral thread.
 - Disable comment replies so that only top-level comments are allowed.
-- Disable images and reaction gifs in comments, but only for referral threads.
-- Require a minimum post karma, comment karma, and/or combined karma to comment in referral threads.
-- Define an allowlist of acceptable link domains for referral links. Comments that don't contain a link from one of these domains will be removed.
+- Disable images and reaction gifs in comments only in referral threads.
+- Require a minimum post karma, comment karma, and/or combined karma to comment in referral threads. These user requirements are hidden and never publicly exposed.
+- Allow only flaired users to comment in referral threads, and optionally define a list of required flair CSS classes.
+- Define a list of acceptable link domains for referral links.
+- Require links in thread comments.
+- Remove comments from outside the thread that contain a referral link.
 - Define regexes that comments must have or must not have.
-- Configure whether or not to message users privately from the bot account (not modmail) when their comment is removed and explain why.
+- Optionally message users privately from the bot account (not modmail) when their comment is removed and explain why.
+- Remove posts that contain referral links.
+- Optionally comment on posts that contain referral links.
 
 #### Bug Fixes
 
