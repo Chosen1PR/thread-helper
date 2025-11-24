@@ -1,0 +1,13 @@
+{
+  "name": "thread-helper",
+  "blocks": {
+    "entry": "src/main.tsx",
+    "triggers": [
+      "onCommentCreate",
+      "onCommentDelete"
+    ]
+  },
+  "dev": {
+    "subreddit": "CapitalOneBank"
+  }
+}
