@@ -611,46 +611,37 @@ Devvit.addTrigger({
     // Check if app is enabled
     const appEnabled = await context.settings.get("enable-app");
     if (!appEnabled) return; // If app is not enabled, don't do anything.
+    // Check if removing posts or commenting on posts is enabled
+    const commentOnPosts = await (context.settings.get("comment-on-posts")!) as boolean;
+    const removePosts = await (context.settings.get("remove-posts")!) as boolean;
+    if (!(commentOnPosts || removePosts)) return; // If neither setting is enabled, don't do anything.
+    // Check if author is a mod and mods are exempt
     const modsExempt = await context.settings.get("mods-exempt");
     const authorIsMod = await userIsMod(event.author?.id!, context);
     if (authorIsMod && modsExempt) return; // If author is a mod and mods are exempt, don't do anything.
     
-    const commentOnPosts = await context.settings.get("comment-on-posts")!;
-    const removePosts = await context.settings.get("remove-posts")!;
-    // Check if we need to comment on posts outside of thread
-    if (commentOnPosts) {
-      var commentText = "";
-      if (removePosts)
-        commentText = `Your post was removed because it contains a link from a domain that is restricted to an already existing thread.\n\nPlease post such links only in the designated thread.`;
-      else
-        commentText = `Please note that posts containing links from certain domains are restricted to an already existing thread.\n\nPlease post such links only in the designated thread.`;
-      const newComment = await context.reddit.submitComment({id: event.post?.id!, text: commentText});
-      await newComment.distinguish(true); // always distinguish as mod and pin comment
-      await newComment.lock(); // always lock comment
-    }
-    // Check if we need to remove posts outside of thread
-    if (removePosts) {
-      // Check post content for link from domain list
-      const domainList = (await context.settings.get("domain-list")) as string;
-      if (domainList != undefined && domainList.trim() != "") {
-        var containsDomain = false;
-        const postTitle = event.post?.title!;
-        const postBody = event.post?.selftext!;
-        const postLink = event.post?.url!;
-        var domains = domainList.trim().split(",");
-        for (let i = 0; i < domains.length; i++) {
-          const domain = domains[i].trim().toLowerCase();
-          if (postTitle.includes(domain) || postBody.includes(domain) || postLink.includes(domain)) {
-            containsDomain = true;
-            break;
-          }
-        }
-        // If the post contains a listed domain, remove it and optionally mark it as spam.
-        if (containsDomain) {
-          const removeAsSpam = (await context.settings.get("remove-posts-as-spam")!) as boolean;
-          await context.reddit.remove(event.post?.id!, removeAsSpam);
+    // Check post content for link from domain list
+    const domainList = (await context.settings.get("domain-list")) as string;
+    var containsDomain = false;
+    if (domainList != undefined && domainList.trim() != "") {
+      const postTitle = event.post?.title!;
+      const postBody = event.post?.selftext!;
+      const postLink = event.post?.url!;
+      var domains = domainList.trim().split(",");
+      for (let i = 0; i < domains.length; i++) {
+        const domain = domains[i].trim().toLowerCase();
+        if (postTitle.includes(domain) || postBody.includes(domain) || postLink.includes(domain)) {
+          containsDomain = true;
+          break;
         }
       }
+    }
+    if (commentOnPosts && containsDomain) {
+      await commentOnPost(event.post?.id!, removePosts, context);
+    }
+    if (removePosts && containsDomain) {
+      const removeAsSpam = (await context.settings.get("remove-posts-as-spam")!) as boolean;
+      await context.reddit.remove(event.post?.id!, removeAsSpam);
     }
   },
 });
@@ -898,6 +889,17 @@ function matchesRegex(input: string, regex: string) {
     console.error(`Invalid regex: ${regex}`, error);
     return false;
   }
+}
+
+async function commentOnPost(postId: string, removePost: boolean, context: TriggerContext) {
+  var commentText = "";
+  if (removePost)
+    commentText = `Your post was removed because it contains a link from a domain that is restricted to an already existing thread.\n\nPlease post such links only in the designated thread.`;
+  else
+    commentText = `Please note that posts containing links from certain domains are restricted to an already existing thread.\n\nPlease post such links only in the designated thread.`;
+  const newComment = await context.reddit.submitComment({id: postId, text: commentText});
+  await newComment.distinguish(true); // always distinguish as mod and pin comment
+  await newComment.lock(); // always lock comment
 }
 
 export default Devvit;
