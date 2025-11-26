@@ -21,6 +21,12 @@ For slightly more comment removal versatility, feel free to also check out my ot
 
 ## Changelog
 
+### [0.0.12] (2025-11-25)
+
+#### Bug Fixes
+
+- Fixed a bug that commented on every post (instead of only posts containing referral links) if the "Comment on posts" setting was enabled.
+
 ### [0.0.11] Initial version (2025-11-24)
 
 #### Features
