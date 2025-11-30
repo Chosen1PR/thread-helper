@@ -21,7 +21,7 @@ For slightly more comment removal versatility, feel free to also check out my ot
 
 ## Changelog
 
-### [0.0.15] (2025-11-29)
+### [0.0.17] (2025-11-29)
 
 #### Features
 
@@ -30,6 +30,8 @@ For slightly more comment removal versatility, feel free to also check out my ot
 #### Bug Fixes
 
 - Changed the way comments on referral posts by users work. Now, a post must be removed by the app for a comment to be left on it.
+- Fixed the way the app determines who is a mod by including AutoModerator and the -ModTeam account.
+- Prevented app from messaging AutoModerator or -ModTeam account.
 
 ### [0.0.12] (2025-11-25)
 

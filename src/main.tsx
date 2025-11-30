@@ -1,11 +1,11 @@
 // Learn more at developers.reddit.com/docs
 import {
-  CommentCreate,
+  //CommentCreate,
   //CommentCreateDefinition,
-  CommentDelete,
+  //CommentDelete,
   Devvit,
-  MenuItemOnPressEvent,
-  Post,
+  //MenuItemOnPressEvent,
+  //Post,
   //SettingScope,
   TriggerContext,
   //User,
@@ -350,8 +350,9 @@ Devvit.addTrigger({
               const subredditName = event.subreddit?.name!;
               const postLink = event.post?.permalink!;
               const commentLink = event.comment?.permalink!;
-              const userId = event.author?.id!;
-              await pmUserOutsideThread(userId, subredditName, commentLink, postLink, context);
+              //const userId = event.author?.id!;
+              const username = event.author?.name!;
+              await pmUserOutsideThread(username, subredditName, commentLink, postLink, context);
             }
           }
         }
@@ -362,7 +363,8 @@ Devvit.addTrigger({
     const removeReplies = await context.settings.get("remove-replies")!; //check if removing replies enabled
     // Get comment author info and check if they are a mod
     const userId = event.author?.id!;
-    const authorIsMod = await userIsMod(userId, context);
+    const username = event.author?.name!;
+    const authorIsMod = ((await userIsMod(username, context)));
     const modsExempt = await context.settings.get("mods-exempt");
     const passedModCheck = !(authorIsMod && modsExempt);
     // Beginning of temporary variables that will be needed if PM is sent to user
@@ -576,7 +578,7 @@ Devvit.addTrigger({
         const commentLink = event.comment?.permalink!;
         var reason = getReasonForRemoval(commentRemovedReason);
         reason += getReasonScope(forThisPostFlair, forThisPostTitle);
-        pmUser(userId, subredditName, commentLink, postLink, reason, context);
+        pmUser(username, subredditName, commentLink, postLink, reason, context);
       }
       return;
     }
@@ -626,7 +628,7 @@ Devvit.addTrigger({
     if (! removePosts) return; // If setting is disabled, don't do anything.
     // Check if author is a mod and mods are exempt
     const modsExempt = await context.settings.get("mods-exempt");
-    const authorIsMod = await userIsMod(event.author?.id!, context);
+    const authorIsMod = await userIsMod(event.author?.name!, context);
     if (authorIsMod && modsExempt) return; // If author is a mod and mods are exempt, don't do anything.
     
     // Check post content for link from domain list
@@ -747,13 +749,15 @@ async function getAuthorsCommentCountInPost(
 
 // Helper function to PM a user when their comment is removed
 async function pmUser(
-  userId: string,
+  username: string,
   subredditName: string,
   commentLink: string,
   postLink: string,
   reason: string,
   context: TriggerContext
 ) {
+  if (username == "AutoModerator" || username == (subredditName + "-ModTeam"))
+    return; // If user is known bot, do nothing.
   const subjectText = `Your comment in r/${subredditName} was removed`;
   var messageText = `Hi, [your comment](${commentLink}) in [this post](${postLink}) was removed due to the following reason:\n\n`;
   const commentCountDislaimer = `\n\nTo reduce your comment count so it is once again under the limit, you can delete your comment(s).`;
@@ -764,8 +768,6 @@ async function pmUser(
       messageText + reason + commentCountDislaimer + inboxDisclaimer;
   // any other reason besides removing duplicate comments
   else messageText = messageText + reason + inboxDisclaimer;
-  const thisUser = await context.reddit.getUserById(userId);
-  const username = thisUser?.username;
   if (username) {
     // If you want to send a PM as the subreddit, uncomment the line below and comment out the next line
     //await context.reddit.sendPrivateMessageAsSubreddit({
@@ -786,18 +788,18 @@ async function pmUser(
 }
 
 async function pmUserOutsideThread(
-  userId: string,
+  username: string,
   subredditName: string,
   commentLink: string,
   postLink: string,
   context: TriggerContext
 ) {
+  if (username == "AutoModerator" || username == (subredditName + "-ModTeam"))
+    return; // If user is known bot, do nothing
   const subjectText = `Your comment in r/${subredditName} was removed`;
   var messageText = `Hi, [your comment](${commentLink}) in [this post](${postLink}) was removed because it was identified as being outside of the designated thread.`;
   const inboxDisclaimer = `\n\n*This inbox is not monitored. If you have any questions, please message the moderators of r/${subredditName}.*`;
   messageText = messageText + inboxDisclaimer;
-  const thisUser = await context.reddit.getUserById(userId);
-  const username = thisUser?.username;
   if (username) {
     // If you want to send a PM as the subreddit, uncomment the line below and comment out the next line
     //await context.reddit.sendPrivateMessageAsSubreddit({
@@ -846,13 +848,19 @@ function containsTitle(title: string, titleList: string) {
 }
 
 // Helper function for determining if comment author is a moderator
-async function userIsMod(userId: string, context: TriggerContext) {
-  const modList = context.reddit.getModerators({ subredditName: context.subredditName! }!);
+async function userIsMod(username: string, context: TriggerContext) {
+  // If user not found, return false.
+  if (username == undefined || username == null ||  username == "") return false; 
+  const subredditName = context.subredditName!;
+  // Check if known bot.
+  if (username == "AutoModerator" || username == (subredditName + "-ModTeam"))
+    return true; // Return true for known bots that are mods.
+  const modList = context.reddit.getModerators({ subredditName: subredditName }!);
   const mods = await modList.all();
   var isMod = false;
   //for each mod in the list, check if their user id matches the comment author's user id
   for (let i = 0; i < mods.length; i++) {
-    if (userId == mods[i].id) {
+    if (username == mods[i].username) {
       isMod = true;
       break;
     }
