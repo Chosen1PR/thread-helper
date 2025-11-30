@@ -88,9 +88,19 @@ Devvit.addSettings([
       {
         type: "boolean",
         name: "comment-on-posts",
-        label: "Comment on posts",
+        label: "Comment on removed posts",
         helpText:
-          "Comment on posts outside of the thread that contain a link from one of the above domains, with a message saying to use the designated thread.",
+          "Comment on removed posts with a message saying to use the designated thread.",
+        defaultValue: false,
+        scope: "installation",
+      },
+      // Config setting for locking threads when unpinned
+      {
+        type: "boolean",
+        name: "lock-on-unpin",
+        label: "Lock threads when unpinned",
+        helpText:
+          "If enabled, old megathreads will be locked automatically when they are unpinned from the Community Highlights.",
         defaultValue: false,
         scope: "installation",
       },
@@ -611,10 +621,9 @@ Devvit.addTrigger({
     // Check if app is enabled
     const appEnabled = await context.settings.get("enable-app");
     if (!appEnabled) return; // If app is not enabled, don't do anything.
-    // Check if removing posts or commenting on posts is enabled
-    const commentOnPosts = await (context.settings.get("comment-on-posts")!) as boolean;
+    // Check if removing posts is enabled
     const removePosts = await (context.settings.get("remove-posts")!) as boolean;
-    if (!(commentOnPosts || removePosts)) return; // If neither setting is enabled, don't do anything.
+    if (! removePosts) return; // If setting is disabled, don't do anything.
     // Check if author is a mod and mods are exempt
     const modsExempt = await context.settings.get("mods-exempt");
     const authorIsMod = await userIsMod(event.author?.id!, context);
@@ -636,14 +645,56 @@ Devvit.addTrigger({
         }
       }
     }
-    if (commentOnPosts && containsDomain) {
-      await commentOnPost(event.post?.id!, removePosts, context);
-    }
-    if (removePosts && containsDomain) {
+    // If a match was found, remove post and optionally comment on it.
+    if (containsDomain) {
+      const postId = event.post?.id!;
+      // Check if setting to comment on removed posts is enabled.
+      const commentOnPosts = await (context.settings.get("comment-on-posts")!) as boolean;
+      if (commentOnPosts) // If setting is enabled, proceed with comment.
+        await commentOnRemovedPost(postId, context);
+      // Check if setting to remove as spam is enabled.
       const removeAsSpam = (await context.settings.get("remove-posts-as-spam")!) as boolean;
-      await context.reddit.remove(event.post?.id!, removeAsSpam);
+      // Remove post and pass spam setting to removal method.
+      await context.reddit.remove(postId, removeAsSpam);
     }
   },
+});
+
+// Trigger handler for when a mod action is performed on a post, specifically for when a post is unstickied.
+Devvit.addTrigger({
+  event: 'ModAction',
+  onEvent: async (event, context) => {
+    // Check if the mod action is a post unsticky and not a comment unsticky.
+    if (event.action === 'unsticky') {
+      // Check if the app and corresponsing setting are enabled.
+      const appEnabled = await context.settings.get("enable-app");
+      const lockEnabled = await context.settings.get("lock-on-unpin");
+      if (!(appEnabled && lockEnabled))
+        return; // If the app or setting is not enabled, do nothing.
+      const commentId = event.targetComment?.id ?? '';
+      if (commentId !== '')
+        return; // If the event is a comment, do nothing.
+      const postId = event.targetPost?.id!;
+      const thisPost = await context.reddit.getPostById(postId);
+      if (thisPost.locked) // If the post is already locked, do nothing.
+        return;
+      const flair = thisPost.flair?.text ?? '';
+      const title = thisPost.title!;
+      if (flair != '') { // If the post has a flair, check if it matches the post flair list.
+        const flairListTemp = (await context.settings.get("flair-list") ?? '') as string;
+        const flairList = flairListTemp.trim();
+        if (flairList != '' && containsFlair(flair, flairList))
+          thisPost.lock(); // If the post has a flair that matches the archive flair list, lock it.
+      }
+      if (!thisPost.locked) { // If the post has not already been locked, check if the title matches the post title list.
+        const titleListTemp = (await context.settings.get("title-list") ?? '') as string;
+        const titleList = titleListTemp.trim();
+        if (titleList != '' && containsTitle(title, titleList))
+          thisPost.lock(); // If the post title matches the title list, lock it.
+      }
+      //console.log('Is it locked?: ' + thisPost.isLocked().toString())
+    }
+  }
 });
 
 // Helper function to get key for redis hash that handles comments on posts
@@ -891,12 +942,10 @@ function matchesRegex(input: string, regex: string) {
   }
 }
 
-async function commentOnPost(postId: string, removePost: boolean, context: TriggerContext) {
-  var commentText = "";
-  if (removePost)
-    commentText = `Your post was removed because it contains a link from a domain that is restricted to an already existing thread.\n\nPlease post such links only in the designated thread.`;
-  else
-    commentText = `Please note that posts containing links from certain domains are restricted to an already existing thread.\n\nPlease post such links only in the designated thread.`;
+async function commentOnRemovedPost(postId: string, context: TriggerContext) {
+  const commentText =
+    `Your post was removed because it contains a link from a domain that is restricted to an already existing thread.\n\n` +
+    `Please post such links only in the designated thread.`;
   const newComment = await context.reddit.submitComment({id: postId, text: commentText});
   await newComment.distinguish(true); // always distinguish as mod and pin comment
   await newComment.lock(); // always lock comment
