@@ -15,17 +15,16 @@ Do you have referral megathreads in your community for certain products or servi
 - Remove posts that contain referral links.
 - Optionally comment on posts that contain referral links.
 
-For slightly more comment removal versatility, feel free to also check out my other app [Diverse Comments](https://developers.reddit.com/apps/diverse-comments)!
+For even further automation with referral threads or other posts, feel free to check out two of my other apps!
+
+- [**Pinned Post Archiver**](https://developers.reddit.com/apps/sticky-archiver) locks pinned posts (such as megathreads) automatically when they are unpinned from the Community Highlights section. Configurable by post flair or title.
+- [**Diverse Comments**](https://developers.reddit.com/apps/diverse-comments) allows more comment removal versatility, with a customizable limit on an individual user's comments per post, or a customizable limit on how long comment reply chains can get. Configurable by post flair.
 
 ---
 
 ## Changelog
 
-### [0.0.17] (2025-11-29)
-
-#### Features
-
-- Added the ability to lock old referral threads once they are unpinned from the Community Highlights section of the subreddit.
+### [0.0.18] (2025-11-29)
 
 #### Bug Fixes
 
