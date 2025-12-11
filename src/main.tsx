@@ -21,7 +21,7 @@ import {
   pmUser,
   commentOnRemovedPost,
   userIsMod,
-} from "./utilsAsync.js"
+} from "./utils-async.js"
 
 Devvit.configure({
   redis: true,
