@@ -24,6 +24,13 @@ For even further automation with referral threads or other posts, feel free to c
 
 ## Changelog
 
+### [0.0.19] (2025-12-10)
+
+#### Features
+
+- There is now a unified "top-level comments only" setting that locks top-level comments in addition to removing replies.
+- Performance improvements and better source code legibility.
+
 ### [0.0.18] (2025-11-29)
 
 #### Bug Fixes

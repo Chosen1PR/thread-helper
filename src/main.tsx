@@ -1,16 +1,27 @@
 // Learn more at developers.reddit.com/docs
 import {
-  //CommentCreate,
-  //CommentCreateDefinition,
-  //CommentDelete,
-  Devvit,
-  //MenuItemOnPressEvent,
-  //Post,
-  //SettingScope,
-  TriggerContext,
-  //User,
-  //useState,
+  Devvit
 } from "@devvit/public-api";
+
+import {
+    getKeyForComments,
+    getReasonScope,
+    getReasonForRemoval,
+    postContainsBannedDomain,
+} from "./utils.js"
+
+import {
+  removeCommentOutsideThread,
+  removeDuplicateComment,
+  lockTopLevelCommentOrRemoveReply,
+  removeCommentAccordingToUserRequirements,
+  removeCommentAccordingToContentRequirements,
+  isPostFlairApplicable,
+  isPostTitleApplicable,
+  pmUser,
+  commentOnRemovedPost,
+  userIsMod,
+} from "./utilsAsync.js"
 
 Devvit.configure({
   redis: true,
@@ -106,7 +117,7 @@ Devvit.addSettings([
         name: "remove-duplicates",
         label: "Remove duplicate comments",
         helpText:
-          "Limits users to only one comment per thread by removing any duplicate comments.",
+          "Limit users to only one comment per thread by removing any duplicate comments.",
         defaultValue: false,
         scope: "installation",
       },
@@ -126,8 +137,8 @@ Devvit.addSettings([
   {
     type: "boolean",
     name: "remove-replies",
-    label: "Remove comment replies",
-    helpText: "Limits threads to top-level comments only by removing replies.",
+    label: "Allow top-level comments only",
+    helpText: "Lock top-level comments in thread and remove replies on any unlocked comments.",
     defaultValue: false,
     scope: "installation",
   },
@@ -141,8 +152,7 @@ Devvit.addSettings([
         type: "number",
         name: "min-karma",
         label: "Minimum user karma",
-        //defaultValue: 0,
-        defaultValue: undefined,
+        defaultValue: 0,
         helpText:
           "Minimum combined post and comment karma a user must have to comment on threads where comment limits are enforced.",
         scope: "installation",
@@ -152,7 +162,7 @@ Devvit.addSettings([
         type: "number",
         name: "min-post-karma",
         label: "Minimum post karma",
-        //defaultValue: 0,
+        defaultValue: 0,
         helpText:
           "Minimum post karma a user must have to comment on threads where comment limits are enforced.",
         scope: "installation",
@@ -162,7 +172,7 @@ Devvit.addSettings([
         type: "number",
         name: "min-comment-karma",
         label: "Minimum comment karma",
-        //defaultValue: 0,
+        defaultValue: 0,
         helpText:
           "Minimum comment karma a user must have to comment on threads where comment limits are enforced.",
         scope: "installation",
@@ -172,7 +182,7 @@ Devvit.addSettings([
         type: "number",
         name: "min-account-age-days",
         label: "Minimum account age (days)",
-        //defaultValue: 0,
+        defaultValue: 0,
         helpText:
           "Minimum account age in days a user must have to comment on threads where comment limits are enforced.",
         scope: "installation",
@@ -228,7 +238,7 @@ Devvit.addSettings([
         name: "remove-images",
         label: "Remove comments with images",
         helpText:
-          "Removes comments in thread that contain images or reaction gifs. Not necessary if your subreddit does not allow images in comments.",
+          "Remove comments in thread that contain images or reaction gifs. Not necessary if your subreddit does not allow images in comments.",
         defaultValue: false,
         scope: "installation",
       },
@@ -270,7 +280,7 @@ Devvit.addSettings([
     name: "mods-exempt",
     label: "Moderators exempt",
     defaultValue: true,
-    helpText: "Disable for testing or if your subreddit has many mods, as the latter can affect performance.",
+    helpText: "Disable for testing, but most mods should leave this enabled.",
     scope: "installation",
   },
 ]);
@@ -293,284 +303,73 @@ Devvit.addTrigger({
   event: "CommentCreate",
   onEvent: async (event, context) => {
     // Check if app is enabled
-    //console.log('Checking if Referral Thread Helper app is enabled');
     const appEnabled = await context.settings.get("enable-app");
     if (!appEnabled) return; // If app is not enabled, don't do anything.
-    //console.log('Referral Thread Helper app is enabled and checking new comment');
     // Check if this post flair or title applies
-    var forThisPostFlair = false;
-    var forThisPostTitle = false;
-    const flair = event.post?.linkFlair?.text ?? "";
-    const flairListTemp = await context.settings.get("flair-list");
-    const flairList = flairListTemp?.toString() ?? "";
-    forThisPostFlair =
-      flair != "" && flairList != "" && containsFlair(flair, flairList);
-    // If not enabled for this post flair, then check post title keywords.
-    if (!forThisPostFlair) {
-      const title = event.post?.title!;
-      const titleListTemp = await context.settings.get("title-list");
-      const titleList = titleListTemp?.toString() ?? "";
-      forThisPostTitle =
-        title != "" && titleList != "" && containsTitle(title, titleList);
-    }
-    if (!forThisPostFlair && !forThisPostTitle) {
-      //return; // Comment later when ready to implement this feature
+    const postFlairIsApplicable = await isPostFlairApplicable(event.post?.linkFlair?.text ?? "", context);
+    var postTitleIsApplicable = false;
+    if (!postFlairIsApplicable)
+      postTitleIsApplicable = await isPostTitleApplicable(event.post?.title!, context);
+    if (!(postFlairIsApplicable || postTitleIsApplicable)) {
       // If this post does not match any flair or title keywords, check if the comment is allowed outside of the thread.
-      const removeOutsideComments = await context.settings.get("remove-outside-comments")!;
-      if (removeOutsideComments) {
-        // If the setting is enabled, check if the comment matches any of the domains.
-        const domainList = (await context.settings.get("domain-list")) as string;
-        if (domainList != undefined && domainList.trim() != "") {
-          // If the domain list is not empty, check if the comment contains any of the domains.
-          var containsDomain = false;
-          var domains = domainList.trim().split(",");
-          for (let i = 0; i < domains.length; i++) {
-            const domain = domains[i].trim().toLowerCase();
-            if (domain != "" && event.comment?.body!.includes(domain)) {
-              containsDomain = true;
-              break;
-            }
-          }
-          if (containsDomain) {
-            // If the comment contains a whitelisted domain, remove it.
-            await context.reddit.remove(event.comment?.id!, false);
-            // Optionally PM user about removal
-            const pmUserSetting = await context.settings.get("pm-user")!;
-            if (pmUserSetting) {
-              const subredditName = event.subreddit?.name!;
-              const postLink = event.post?.permalink!;
-              const commentLink = event.comment?.permalink!;
-              //const userId = event.author?.id!;
-              const username = event.author?.name!;
-              await pmUserOutsideThread(username, subredditName, commentLink, postLink, context);
-            }
-          }
-        }
-      }
+      await removeCommentOutsideThread(
+        event.comment?.id!,
+        event.comment?.body!,
+        event.author?.name!,
+        event.post?.permalink!,
+        event.comment?.permalink!,
+        context
+      );
       return; // Rest of the code only applies to posts with specified flair or title keywords.
     }
-    const removeDuplicates = await context.settings.get("remove-duplicates")!; //check if removing duplicates enabled
-    const removeReplies = await context.settings.get("remove-replies")!; //check if removing replies enabled
     // Get comment author info and check if they are a mod
     const userId = event.author?.id!;
     const username = event.author?.name!;
-    const authorIsMod = ((await userIsMod(username, context)));
-    const modsExempt = await context.settings.get("mods-exempt");
-    const passedModCheck = !(authorIsMod && modsExempt);
-    // Beginning of temporary variables that will be needed if PM is sent to user
+    const authorIsMod = await userIsMod(username, context);
+    const modsExempt = (await context.settings.get("mods-exempt")) as boolean;
+    const userIsExempt = authorIsMod && modsExempt;
     var commentRemoved = false;
-    var commentRemovedReason = "";
+    var commentRemovedReason = ""; // needed if PM is sent to user
     const postId = event.post?.id!;
     const commentId = event.comment?.id!;
-    
     // If everything looks good, this is where we remove duplicate comments
+    const removeDuplicates = await context.settings.get("remove-duplicates") as boolean; //check if removing duplicates enabled
     if (removeDuplicates) {
-      // Step 1: Get user's comment count in post.
-      const key = getKeyForComments(postId); //key is comments:<postId>, field is userId
-      const commentCount = await getAuthorsCommentCountInPost(
-        key,
-        userId,
-        postId,
-        context
-      );
-      // Step 2: If user is over limit, remove comment.
-      if (commentCount >= 1 && passedModCheck) {
-        // Mod check here will depend on the "mods exempt" config setting.
-        await context.reddit.remove(commentId, false);
-        commentRemoved = true;
-        commentRemovedReason = "duplicate";
-      }
-      // Step 3: Increment user's comment count in post.
-      await context.redis.hIncrBy(key, userId, 1);
-      // Even if this comment was removed in Step 2, any new comments will still increment the comment count for this user.
-      // For the count to be decremented, the user must delete their comment and "update with comment deletes" must be enabled.
+      commentRemoved = await removeDuplicateComment(userId, postId, commentId, userIsExempt, context);
+      if (commentRemoved) commentRemovedReason = "duplicate";
     }
-    
     // If the comment was not removed in the previous step, check if we need to remove replies.
-    if (removeReplies && !commentRemoved && passedModCheck) {
-      //console.log('Checking if comment is a reply');
-      var counter = 1;
-      var id = event.comment?.parentId!;
-      // Keep getting parent IDs until you get to "t3_[whatever]" which indicates the parent post,
-      // or until you get to the comment limit of 1 (i.e., only top-level comments allowed).
-      while (id.startsWith("t1_") && counter <= 1) {
-        //console.log(`Checking parent ID: ${id}`);
-        const comment = await context.reddit.getCommentById(id)!;
-        id = comment.parentId;
-        counter++;
-      }
-      // If the limit of comment tree growth has been reached, remove comment
-      if (counter > 1) {
-        // Mod check here will depend on the "mods exempt" config setting.
-        context.reddit.remove(commentId, false);
-        commentRemoved = true;
-        commentRemovedReason = "reply";
+    if (!commentRemoved && !userIsExempt) {
+      const removeReplies = await context.settings.get("remove-replies") as boolean; //check if removing replies enabled
+      if (removeReplies) {
+        commentRemoved = await lockTopLevelCommentOrRemoveReply(commentId, userIsExempt, context);
+        if (commentRemoved) commentRemovedReason = "reply";
       }
     }
     // If comment was still not removed, check user requirements
-    if (!commentRemoved && passedModCheck) {
-      const minKarma = (await context.settings.get("min-karma")!) as number; //get minimum user karma
-      const minPostKarma = (await context.settings.get("min-subreddit-karma")!) as number; //get minimum post karma
-      const minCommentKarma = (await context.settings.get("min-comment-karma")!) as number; //get minimum comment karma
-      const minAccountAgeDays = (await context.settings.get("min-account-age-days")!) as number; //get minimum account age
-      const requireFlair = await context.settings.get("require-user-flair")!; //get user flair requirement
-      const author = await context.reddit.getUserById(userId)!;
-      const linkKarma = author?.linkKarma!;
-      const commentKarma = author?.commentKarma!;
-      const accountCreated = author?.createdAt!;
-      // Check combined post/comment karma requirement
-      if (isValidKarmaSetting(minKarma)) {
-        const totalKarma = linkKarma + commentKarma;
-        if (totalKarma < minKarma) {
-          await context.reddit.remove(commentId, false);
-          commentRemoved = true;
-          commentRemovedReason = "karma";
-        }
-      }
-      // Check post karma requirement
-      if (isValidKarmaSetting(minPostKarma) && !commentRemoved) {
-        if (linkKarma < minPostKarma) {
-          await context.reddit.remove(commentId, false);
-          commentRemoved = true;
-          commentRemovedReason = "post-karma";
-        }
-      }
-      // Check comment karma requirement
-      if (isValidKarmaSetting(minCommentKarma) && !commentRemoved) {
-        if (commentKarma < minCommentKarma) {
-          await context.reddit.remove(commentId, false);
-          commentRemoved = true;
-          commentRemovedReason = "comment-karma";
-        }
-      }
-      // Check account age requirement
-      if (isValidAccountAgeSetting(minAccountAgeDays) && !commentRemoved) {
-        const currentDate = new Date();
-        const accountAgeMs = currentDate.getTime() - accountCreated.getTime();
-        const accountAgeDays = accountAgeMs / (1000 * 60 * 60 * 24);
-        if (accountAgeDays < minAccountAgeDays) {
-          await context.reddit.remove(commentId, false);
-          commentRemoved = true;
-          commentRemovedReason = "age";
-        }
-      }
-      // Check user flair requirement
-      if (requireFlair && !commentRemoved) {
-        const userFlair = event.author?.flair;
-        if (userFlair) { // User has flair
-          const userFlairCss = userFlair.cssClass ?? "";
-          const userFlairCssList = (await context.settings.get("user-flair-css-list")) as string;
-          if (userFlairCssList != undefined && userFlairCssList.trim() != "") {
-            var flairMatch = false;
-            var flairClasses = userFlairCssList.trim().split(",");
-            for (let i = 0; i < flairClasses.length; i++) {
-              const flairCssFromList = flairClasses[i].trim();
-              if (flairCssFromList != "" && userFlairCss == flairCssFromList) {
-                flairMatch = true;
-                break;
-              }
-            }
-            if (!flairMatch) {
-              await context.reddit.remove(commentId, false);
-              commentRemoved = true;
-              commentRemovedReason = "flair-specific";
-            }
-          }
-        }
-        else { // User does not have flair
-          await context.reddit.remove(commentId, false);
-          commentRemoved = true;
-          commentRemovedReason = "flair";
-        }
-      }
+    if (!commentRemoved && !userIsExempt) {
+      const userFlair = event.author?.flair;
+      const karma = event.author?.karma!;
+      commentRemovedReason = await removeCommentAccordingToUserRequirements(commentId, userId, userFlair, karma, context);
+      commentRemoved = (commentRemovedReason != "");
     }
     // If comment still not removed, check comment content
-    if (!commentRemoved && passedModCheck) {
-      const commentBody = event.comment?.body!.toString() ?? "";
-      // Check if comment contains images
-      const removeImages = await context.settings.get("remove-images")!;
-      //console.log(`Remove images setting is ${removeImages}`);
-      if (removeImages) {
-        //console.log('Checking comment for images/gifs');
-        const imageRegex = /!\[(img|gif)\]\(([-\w\|]+)\)/;
-        const containsImage = imageRegex.test(commentBody);
-        //if (event.comment?.hasMedia) {
-        if (containsImage) {
-          //console.log('Comment contains images/gifs, removing comment');
-          await context.reddit.remove(event.comment?.id!, false);
-          commentRemoved = true;
-          commentRemovedReason = "image";
-        }
-      }
-      // If comment still not removed, check if comment contains required domain
-      const requireDomains = await context.settings.get("require-domains")!;
-      if (requireDomains) {
-        const domainList = (await context.settings.get("domain-list")) as string;
-        if (domainList != undefined && domainList.trim() != "" && !commentRemoved) {
-          var containsDomain = false;
-          var domains = domainList.trim().split(",");
-          for (let i = 0; i < domains.length; i++) {
-            const domain = domains[i].trim().toLowerCase();
-            if (domain != "" && commentBody.includes(domain)) {
-              containsDomain = true;
-              break;
-            }
-          }
-          if (!containsDomain) {
-            await context.reddit.remove(event.comment?.id!, false);
-            commentRemoved = true;
-            commentRemovedReason = "domain";
-          }
-        }
-      }
-      // If comment still not removed, check if comment matches required regex pattern
-      const requiredRegex = (await context.settings.get(
-        "required-regex"
-      )) as string;
-      if (
-        requiredRegex != undefined &&
-        requiredRegex.trim() != "" &&
-        !commentRemoved
-      ) {
-        const commentBody = event.comment?.body!.toString() ?? "";
-        if (!matchesRegex(commentBody, requiredRegex)) {
-          await context.reddit.remove(event.comment?.id!, false);
-          commentRemoved = true;
-          commentRemovedReason = "regex";
-        }
-      }
-      // If comment still not removed, check if comment matches restricted regex pattern
-      const restrictedRegex = (await context.settings.get(
-        "restricted-regex"
-      )) as string;
-      if (
-        restrictedRegex != undefined &&
-        restrictedRegex.trim() != "" &&
-        !commentRemoved
-      ) {
-        const commentBody = event.comment?.body!.toString() ?? "";
-        if (matchesRegex(commentBody, restrictedRegex)) {
-          await context.reddit.remove(event.comment?.id!, false);
-          commentRemoved = true;
-          commentRemovedReason = "regex";
-        }
-      }
+    if (!commentRemoved && !userIsExempt) {
+      commentRemovedReason = await removeCommentAccordingToContentRequirements(event.comment?.id!, event.comment?.body!, context);
+      commentRemoved = (commentRemovedReason != "");
     }
     // If comment was removed and PM setting is enabled, send PM to user
     if (commentRemoved) {
       // Optional: inform user via PM that they have reached the limit.
-      const pmUserSetting = await context.settings.get("pm-user")!;
+      const pmUserSetting = (await context.settings.get("pm-user")) as boolean;
       if (pmUserSetting) {
-        //console.log('Preparing to PM user about comment removal');
-        const subredditName = event.subreddit?.name!;
-        //const postTitle = event.post?.title!;
+        const subredditName = context.subredditName!;
         const postLink = event.post?.permalink!;
         const commentLink = event.comment?.permalink!;
         var reason = getReasonForRemoval(commentRemovedReason);
-        reason += getReasonScope(forThisPostFlair, forThisPostTitle);
+        reason += getReasonScope(postFlairIsApplicable, postTitleIsApplicable);
         pmUser(username, subredditName, commentLink, postLink, reason, context);
       }
-      return;
     }
   },
 });
@@ -580,15 +379,14 @@ Devvit.addTrigger({
   event: "CommentDelete",
   onEvent: async (event, context) => {
     //console.log(`A new comment was deleted: ${JSON.stringify(event)}`);
-    const removeDuplicates = await context.settings.get("remove-duplicates")!; //check if diversification enabled
+    const removeDuplicates = (await context.settings.get("remove-duplicates")) as boolean; //check if duplicate removal enabled
     if (!removeDuplicates) return; // If not enabled, don't do anything.
     const updateDelete = await context.settings.get("update-comment-delete"); //check if update with delete enabled
     if (!updateDelete) return; // If not enabled, don't do anything.
-    const eventSource = event.source;
-    const source = eventSource.valueOf(); // 3 = mod; 2 = admin; 1 = user; 0 = unknown; -1 = unrecognized
+    const source = event.source.valueOf(); // 3 = mod; 2 = admin; 1 = user; 0 = unknown; -1 = unrecognized
     if (source != 1) return; // If a comment was not deleted by its author, don't do anything.
 
-    // If we got here, then comment diversification is enabled and "update with comment delete" is enabled.
+    // If we got here, then "remove duplicates" is enabled and "update with comment deletes" is enabled.
     const userId = event.author?.id!;
     const postId = event.postId!;
     const key = getKeyForComments(postId); //key is comments:<postId>
@@ -611,305 +409,35 @@ Devvit.addTrigger({
   event: "PostSubmit",
   onEvent: async (event, context) => {
     // Check if app is enabled
-    const appEnabled = await context.settings.get("enable-app");
+    const appEnabled = (await context.settings.get("enable-app")) as boolean;
     if (!appEnabled) return; // If app is not enabled, don't do anything.
     // Check if removing posts is enabled
-    const removePosts = await (context.settings.get("remove-posts")!) as boolean;
+    const removePosts = await (context.settings.get("remove-posts")) as boolean;
     if (! removePosts) return; // If setting is disabled, don't do anything.
     // Check if author is a mod and mods are exempt
-    const modsExempt = await context.settings.get("mods-exempt");
+    const modsExempt = (await context.settings.get("mods-exempt")) as boolean;
     const authorIsMod = await userIsMod(event.author?.name!, context);
     if (authorIsMod && modsExempt) return; // If author is a mod and mods are exempt, don't do anything.
-    
     // Check post content for link from domain list
     const domainList = (await context.settings.get("domain-list")) as string;
-    var containsDomain = false;
-    if (domainList != undefined && domainList.trim() != "") {
-      const postTitle = event.post?.title!;
-      const postBody = event.post?.selftext!;
-      const postLink = event.post?.url!;
-      var domains = domainList.trim().split(",");
-      for (let i = 0; i < domains.length; i++) {
-        const domain = domains[i].trim().toLowerCase();
-        if (postTitle.includes(domain) || postBody.includes(domain) || postLink.includes(domain)) {
-          containsDomain = true;
-          break;
-        }
-      }
-    }
+    var containsDomain = postContainsBannedDomain(
+      event.post?.title!,
+      event.post?.selftext,
+      event.post?.url,
+      domainList
+    );
     // If a match was found, remove post and optionally comment on it.
     if (containsDomain) {
       const postId = event.post?.id!;
       // Check if setting to comment on removed posts is enabled.
-      const commentOnPosts = await (context.settings.get("comment-on-posts")!) as boolean;
-      if (commentOnPosts) // If setting is enabled, proceed with comment.
-        await commentOnRemovedPost(postId, context);
+      if (await context.settings.get("comment-on-posts"))
+        await commentOnRemovedPost(postId, context); // If setting is enabled, leave a comment.
       // Check if setting to remove as spam is enabled.
-      const removeAsSpam = (await context.settings.get("remove-posts-as-spam")!) as boolean;
+      const removeAsSpam = (await context.settings.get("remove-posts-as-spam")) as boolean;
       // Remove post and pass spam setting to removal method.
       await context.reddit.remove(postId, removeAsSpam);
     }
   },
 });
-
-// Helper function to get key for redis hash that handles comments on posts
-function getKeyForComments(postId: string) {
-  return `comments:${postId}`;
-}
-
-// Alternative helper function for redis key-value pair that handles comments on posts
-function getKeyForComments2(postId: string, userId: string) {
-  return `${postId}:${userId}`;
-}
-
-// Helper function for redis key-value pair that handles manual post diversification
-function getKeyForDiversifyPosts(postId: string) {
-  return `diversify:${postId}`;
-}
-
-// Helper function for redis key-value pair that handles manual post pruning
-function getKeyForPrunePosts(postId: string) {
-  return `prune:${postId}`;
-}
-
-// Helper function that tells you if the current comment limit in the config settings is even valid
-function commentLimitIsValid(
-  commentLimit: string | number | boolean | string[] | undefined
-) {
-  return (
-    commentLimit != undefined &&
-    !Number.isNaN(commentLimit) &&
-    Number(commentLimit) >= 1
-  );
-}
-
-// Helper function for getting user's comment count
-async function getAuthorsCommentCountInPost(
-  key: string,
-  userId: string,
-  postId: string,
-  context: TriggerContext
-) {
-  var countString = (await context.redis.hGet(key, userId)) ?? "";
-  if (countString == "") {
-    // User hasn't commented here before. Adding redis hash with comment count of 0.
-    countString = "0";
-    await context.redis.hSet(key, { userId: countString });
-  }
-  const commentCount = Number(countString);
-  return commentCount;
-}
-
-// Helper function to PM a user when their comment is removed
-async function pmUser(
-  username: string,
-  subredditName: string,
-  commentLink: string,
-  postLink: string,
-  reason: string,
-  context: TriggerContext
-) {
-  if (username == "AutoModerator" || username == (subredditName + "-ModTeam"))
-    return; // If user is known bot, do nothing.
-  const subjectText = `Your comment in r/${subredditName} was removed`;
-  var messageText = `Hi, [your comment](${commentLink}) in [this post](${postLink}) was removed due to the following reason:\n\n`;
-  const commentCountDislaimer = `\n\nTo reduce your comment count so it is once again under the limit, you can delete your comment(s).`;
-  const inboxDisclaimer = `\n\n*This inbox is not monitored. If you have any questions, please message the moderators of r/${subredditName}.*`;
-  if (reason.startsWith("- Comments on this post are limited to one"))
-    // only when removing duplicate comments
-    messageText =
-      messageText + reason + commentCountDislaimer + inboxDisclaimer;
-  // any other reason besides removing duplicate comments
-  else messageText = messageText + reason + inboxDisclaimer;
-  if (username) {
-    // If you want to send a PM as the subreddit, uncomment the line below and comment out the next line
-    //await context.reddit.sendPrivateMessageAsSubreddit({
-    //console.log(`PMing user u/${username} about comment removal`);
-    try {
-      await context.reddit.sendPrivateMessage({
-        subject: subjectText,
-        text: messageText,
-        to: username,
-        //fromSubredditName: subredditName,
-      });
-    } catch (error) {
-      console.log(`Error sending PM to u/${username}: ${error}`);
-    }
-  } else {
-    console.log(`Error: User not found. Cannot send PM.`);
-  }
-}
-
-async function pmUserOutsideThread(
-  username: string,
-  subredditName: string,
-  commentLink: string,
-  postLink: string,
-  context: TriggerContext
-) {
-  if (username == "AutoModerator" || username == (subredditName + "-ModTeam"))
-    return; // If user is known bot, do nothing
-  const subjectText = `Your comment in r/${subredditName} was removed`;
-  var messageText = `Hi, [your comment](${commentLink}) in [this post](${postLink}) was removed because it was identified as being outside of the designated thread.`;
-  const inboxDisclaimer = `\n\n*This inbox is not monitored. If you have any questions, please message the moderators of r/${subredditName}.*`;
-  messageText = messageText + inboxDisclaimer;
-  if (username) {
-    // If you want to send a PM as the subreddit, uncomment the line below and comment out the next line
-    //await context.reddit.sendPrivateMessageAsSubreddit({
-    //console.log(`PMing user u/${username} about comment removal`);
-    try {
-      await context.reddit.sendPrivateMessage({
-        subject: subjectText,
-        text: messageText,
-        to: username,
-        //fromSubredditName: subredditName,
-      });
-    } catch (error) {
-      console.log(`Error sending PM to u/${username}: ${error}`);
-    }
-  } else {
-    console.log(`Error: User not found. Cannot send PM.`);
-  }
-}
-
-// Helper function for verifying if post flair is included in the list of flairs in the config settings
-function containsFlair(flair: string, flairList: string) {
-  flair = flair.trim(); //trim unneeded white space
-  var flairs = flairList.split(","); //separate flairs in list
-  for (let i = 0; i < flairs.length; i++) {
-    flairs[i] = flairs[i].trim(); //for each flair in the list, trim white space as well
-    if (flairs[i] == flair)
-      //check if flairs match
-      return true;
-  }
-  //reached end of list, no match
-  return false;
-}
-
-// Helper function for verifying if post title has a match in the list of title keywords in the config settings
-function containsTitle(title: string, titleList: string) {
-  title = title.trim(); //trim unneeded white space
-  var titleKeywords = titleList.split(","); //separate title keywords in list
-  for (let i = 0; i < titleKeywords.length; i++) {
-    titleKeywords[i] = titleKeywords[i].trim(); //for each keyword in the list, trim white space as well
-    if (title.includes(titleKeywords[i]))
-      //check if title includes keyword
-      return true;
-  }
-  //reached end of list, no match
-  return false;
-}
-
-// Helper function for determining if comment author is a moderator
-async function userIsMod(username: string, context: TriggerContext) {
-  // If user not found, return false.
-  if (username == undefined || username == null ||  username == "") return false; 
-  const subredditName = context.subredditName!;
-  // Check if known bot.
-  if (username == "AutoModerator" || username == (subredditName + "-ModTeam"))
-    return true; // Return true for known bots that are mods.
-  const modList = context.reddit.getModerators({ subredditName: subredditName }!);
-  const mods = await modList.all();
-  var isMod = false;
-  //for each mod in the list, check if their user id matches the comment author's user id
-  for (let i = 0; i < mods.length; i++) {
-    if (username == mods[i].username) {
-      isMod = true;
-      break;
-    }
-  }
-  return isMod;
-}
-
-// Helper function to get reason for why a comment was removed
-function getReasonForRemoval(reasonWord: string) {
-  var reason = "";
-  if (reasonWord == "duplicate") {
-    reason += "- Comments on this post are limited to one per user.";
-  } else if (reasonWord == "reply") {
-    reason += "- Comment replies are disabled on this post.";
-  } else if (reasonWord == "image") {
-    reason +=
-      "- Comments containing images or reaction gifs are not allowed on this post.";
-  } else if (reasonWord == "karma") {
-    reason +=
-      "- You do not meet the minimum total karma requirement to comment on this post.";
-  } else if (reasonWord == "post-karma") {
-    reason +=
-      "- You do not meet the minimum post karma requirement to comment on this post.";
-  } else if (reasonWord == "comment-karma") {
-    reason +=
-      "- You do not meet the minimum comment karma requirement to comment on this post.";
-  } else if (reasonWord == "age") {
-    reason +=
-      "- You do not meet the minimum account age requirement to comment on this post.";
-  } else if (reasonWord == "flair") {
-    reason +=
-      "- You must have user flair to comment on this post.";
-  } else if (reasonWord == "flair-specific") {
-    reason +=
-      "- You do not have the required user flair to comment on this post.";
-  } else if (reasonWord == "domain") {
-    reason +=
-      "- Your comment does not contain any of the required link domains.";
-  } else if (reasonWord == "regex") {
-    reason += "- Your comment does not match the required format.";
-  }
-  return reason;
-}
-
-// Helper function to get the full text for which post(s) the comment removal reason applies
-function getReasonScope(forThisPostFlair: boolean, forThisPostTitle: boolean) {
-  var scope = "";
-  if (forThisPostFlair)
-    scope +=
-      " Currently, this limit or requirement applies across all posts with this post's flair.";
-  else if (forThisPostTitle)
-    scope +=
-      " Currently, this limit or requirement applies across all posts with a similar post title.";
-  return scope;
-}
-
-// Helper function to validate karma setting
-function isValidKarmaSetting(
-  karmaSetting: string | number | boolean | string[] | undefined
-) {
-  return (
-    karmaSetting != undefined &&
-    !Number.isNaN(karmaSetting) &&
-    Number(karmaSetting) != 0
-  );
-}
-
-// Helper function to validate account age setting
-function isValidAccountAgeSetting(
-  accountAgeSetting: string | number | boolean | string[] | undefined
-) {
-  return (
-    accountAgeSetting != undefined &&
-    !Number.isNaN(accountAgeSetting) &&
-    Number(accountAgeSetting) > 0
-  );
-}
-
-// Helper function to check if a string matches a regex pattern
-function matchesRegex(input: string, regex: string) {
-  try {
-    const pattern = new RegExp(regex);
-    return pattern.test(input);
-  } catch (error) {
-    console.error(`Invalid regex: ${regex}`, error);
-    return false;
-  }
-}
-
-async function commentOnRemovedPost(postId: string, context: TriggerContext) {
-  const commentText =
-    `Your post was removed because it contains a link from a domain that is restricted to an already existing thread.\n\n` +
-    `Please post such links only in the designated thread.`;
-  const newComment = await context.reddit.submitComment({id: postId, text: commentText});
-  await newComment.distinguish(true); // always distinguish as mod and pin comment
-  await newComment.lock(); // always lock comment
-}
 
 export default Devvit;
