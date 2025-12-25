@@ -288,6 +288,7 @@ Devvit.addSettings([
 // Button for config settings on devvit site
 Devvit.addMenuItem({
   label: "Referral Thread Helper",
+  description: "Settings",
   location: "subreddit",
   forUserType: "moderator",
   onPress: async (event, context) => {

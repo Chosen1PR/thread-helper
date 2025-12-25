@@ -24,6 +24,12 @@ For even further automation with referral threads or other posts, feel free to c
 
 ## Changelog
 
+### [0.1.0] (2025-12-24)
+
+- Added the word "Settings" to the subreddit-level menu item.
+- Bumped minor version.
+- Updated Devvit version to 0.12.7.
+
 ### [0.0.20] (2025-12-10)
 
 #### Features
