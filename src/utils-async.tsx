@@ -218,7 +218,20 @@ export async function removeCommentAccordingToContentRequirements(
       commentRemovedReason = "image";
     }
   }
-  // If comment not removed yet, check if comment contains required domain
+  // If comment not removed yet, check if comment contains large header text
+  if (!commentRemoved) {
+    const removeHeaders = (await context.settings.get("remove-headers")) as boolean;
+    if (removeHeaders) {
+      const headerRegex = /(^|\n)#{1,6}\s*.+/;
+      const containsHeader = headerRegex.test(commentBody);
+      if (containsHeader) {
+        await context.reddit.remove(commentId, false);
+        commentRemoved = true;
+        commentRemovedReason = "header";
+      }
+    }
+  }
+  // If comment still not removed, check if comment contains required domain
   if (!commentRemoved) {
     const requireDomains = (await context.settings.get("require-domains")) as boolean;
     if (requireDomains) {

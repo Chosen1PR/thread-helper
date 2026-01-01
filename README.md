@@ -4,7 +4,7 @@ Do you have referral megathreads in your community for certain products or servi
 
 - Limit users to one comment per referral thread.
 - Disable comment replies so that only top-level comments are allowed.
-- Disable images and reaction gifs in comments only in referral threads.
+- Disable large header text, images, and reaction gifs only in referral threads.
 - Require a minimum post karma, comment karma, and/or combined karma to comment in referral threads. These user requirements are hidden and never publicly exposed.
 - Allow only flaired users to comment in referral threads, and optionally define a list of required flair CSS classes.
 - Define a list of acceptable link domains for referral links.
@@ -15,20 +15,24 @@ Do you have referral megathreads in your community for certain products or servi
 - Remove posts that contain referral links.
 - Optionally comment on posts that contain referral links.
 
-For even further automation with referral threads or other posts, feel free to check out two of my other apps!
+For even further automation with referral threads or other posts, feel free to check out some of my other apps!
 
 - [**Pinned Post Archiver**](https://developers.reddit.com/apps/sticky-archiver) locks pinned posts (such as megathreads) automatically when they are unpinned from the Community Highlights section. Configurable by post flair or title.
 - [**Diverse Comments**](https://developers.reddit.com/apps/diverse-comments) allows more comment removal versatility, with a customizable limit on an individual user's comments per post, or a customizable limit on how long comment reply chains can get. Configurable by post flair.
+- [**Lock Removed Posts**](https://developers.reddit.com/apps/diverse-comments) locks posts automatically once they are removed by a mod or deleted by the OP.
 
 ---
 
 ## Changelog
 
-### [0.1.0] (2025-12-24)
+### [0.1.2] (2026-01-01)
 
+#### Features
+
+- Added the ability to remove comments with large, distracting header text.
 - Added the word "Settings" to the subreddit-level menu item.
-- Bumped minor version.
 - Updated Devvit version to 0.12.7.
+- Bumped minor version.
 
 ### [0.0.20] (2025-12-10)
 

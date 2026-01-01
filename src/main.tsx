@@ -242,6 +242,16 @@ Devvit.addSettings([
         defaultValue: false,
         scope: "installation",
       },
+      // Config setting for removing comments with large header text
+      {
+        type: "boolean",
+        name: "remove-headers",
+        label: "Remove comments with large header text",
+        helpText:
+          "Remove comments in thread that contain large header text (e.g., '# Header' in markdown).",
+        defaultValue: false,
+        scope: "installation",
+      },
       // Config setting for comment regex pattern
       {
         type: "paragraph",
@@ -292,9 +302,8 @@ Devvit.addMenuItem({
   location: "subreddit",
   forUserType: "moderator",
   onPress: async (event, context) => {
-    const subredditName = context.subredditName!;
     context.ui.navigateTo(
-      `https://developers.reddit.com/r/${subredditName}/apps/thread-helper`
+      `https://developers.reddit.com/r/${context.subredditName!}/apps/${context.appName}`
     );
   },
 });
@@ -340,7 +349,7 @@ Devvit.addTrigger({
       if (commentRemoved) commentRemovedReason = "duplicate";
     }
     // If the comment was not removed in the previous step, check if we need to remove replies.
-    if (!commentRemoved && !userIsExempt) {
+    if (!commentRemoved) {
       const removeReplies = await context.settings.get("remove-replies") as boolean; //check if removing replies enabled
       if (removeReplies) {
         commentRemoved = await lockTopLevelCommentOrRemoveReply(commentId, userIsExempt, context);
