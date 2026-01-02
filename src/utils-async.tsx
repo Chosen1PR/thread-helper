@@ -231,6 +231,17 @@ export async function removeCommentAccordingToContentRequirements(
       }
     }
   }
+  // If comment still not removed, check comment length
+  if (!commentRemoved) {
+    const maxLength = (await context.settings.get("max-length")) as number;
+    if (isValidKarmaSetting(maxLength) && maxLength > 0) { // reuse karma setting validator for non-negative numbers
+      if (commentBody.length > maxLength) {
+        await context.reddit.remove(commentId, false);
+        commentRemoved = true;
+        commentRemovedReason = "length";
+      }
+    }
+  }
   // If comment still not removed, check if comment contains required domain
   if (!commentRemoved) {
     const requireDomains = (await context.settings.get("require-domains")) as boolean;

@@ -83,6 +83,9 @@ export function getReasonForRemoval(reasonWord: string) {
   else if (reasonWord == "header") {
     reason += "- Comments containing large header text are not allowed on this post.";
   }
+  else if (reasonWord == "length") {
+    reason += "- Your comment is too long.";
+  }
   else if (reasonWord == "karma") {
     reason += "- You do not meet the minimum total karma requirement to comment on this post.";
   }

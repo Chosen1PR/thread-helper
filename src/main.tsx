@@ -252,6 +252,15 @@ Devvit.addSettings([
         defaultValue: false,
         scope: "installation",
       },
+      // Config setting for comment character length
+      {
+        type: "number",
+        name: "max-length",
+        label: "Maximum comment length (characters)",
+        helpText:
+          "Maximum number of characters allowed for comments in thread. Set to 0 to disable.",
+        scope: "installation",
+      },
       // Config setting for comment regex pattern
       {
         type: "paragraph",

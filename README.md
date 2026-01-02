@@ -5,6 +5,7 @@ Do you have referral megathreads in your community for certain products or servi
 - Limit users to one comment per referral thread.
 - Disable comment replies so that only top-level comments are allowed.
 - Disable large header text, images, and reaction gifs only in referral threads.
+- Define a maximum number of characters for referral comments.
 - Require a minimum post karma, comment karma, and/or combined karma to comment in referral threads. These user requirements are hidden and never publicly exposed.
 - Allow only flaired users to comment in referral threads, and optionally define a list of required flair CSS classes.
 - Define a list of acceptable link domains for referral links.
@@ -25,11 +26,12 @@ For even further automation with referral threads or other posts, feel free to c
 
 ## Changelog
 
-### [0.1.2] (2026-01-01)
+### [0.1.4] (2026-01-02)
 
 #### Features
 
 - Added the ability to remove comments with large, distracting header text.
+- Added the ability to set a maximum character count for referral comments.
 - Added the word "Settings" to the subreddit-level menu item.
 - Updated Devvit version to 0.12.7.
 - Bumped minor version.
