@@ -26,7 +26,7 @@ For even further automation with referral threads or other posts, feel free to c
 
 ## Changelog
 
-### [0.1.7] (2026-01-14)
+### [0.1.8] (2026-01-14)
 
 - New app icon.
 
