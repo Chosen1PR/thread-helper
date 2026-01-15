@@ -8,6 +8,9 @@
       "onPostSubmit"
     ]
   },
+  "marketingAssets": {
+    "icon": "assets/rth-icon.png"
+  },
   "dev": {
     "subreddit": "CapitalOneBank"
   }
