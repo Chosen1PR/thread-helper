@@ -4,10 +4,10 @@ import {
 } from "@devvit/public-api";
 
 import {
-    getKeyForComments,
-    getReasonScope,
-    getReasonForRemoval,
-    postContainsBannedDomain,
+  getKeyForComments,
+  getReasonScope,
+  getReasonForRemoval,
+  postContainsBannedDomain,
 } from "./utils.js"
 
 import {
