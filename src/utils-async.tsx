@@ -152,7 +152,7 @@ export async function removeCommentAccordingToUserRequirements(
     if (isValidAccountAgeSetting(minAccountAgeDays)) {
       const currentDate = new Date();
       const accountAgeMs = currentDate.getTime() - accountCreated.getTime();
-      const accountAgeDays = accountAgeMs / (1000 * 60 * 60 * 24);
+      const accountAgeDays = accountAgeMs / (86_400_000); // 1000 ms/s * 60 s/min * 60 min/hr * 24 hr/day = 86,400,000 ms/day
       if (accountAgeDays < minAccountAgeDays) {
         await context.reddit.remove(commentId, false);
         commentRemoved = true;
@@ -294,12 +294,6 @@ export async function removeCommentAccordingToContentRequirements(
 export async function isPostFlairApplicable(flairText: string, context: TriggerContext) {
   const flairList = (await context.settings.get("flair-list") as string) ?? "";
   return (flairText != "" && flairList != "" && textHasMatchInList(flairText, flairList));
-}
-
-// Helper function to determine if a post's title corresponds to an applicable thread
-export async function isPostTitleApplicable(title: string, context: TriggerContext) {
-  const titleList = (await context.settings.get("title-list") as string) ?? "";
-  return (title != "" && titleList != "" && textContainsKeywordFromList(title, titleList));
 }
 
 // Helper function for getting user's comment count

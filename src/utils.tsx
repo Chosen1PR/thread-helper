@@ -115,14 +115,10 @@ export function getReasonForRemoval(reasonWord: string) {
 }
 
 // Helper function to get the full text for which post(s) the comment removal reason applies
-export function getReasonScope(forThisPostFlair: boolean, forThisPostTitle: boolean) {
+export function getReasonScope(forThisPostFlair: boolean) {
   var scope = "";
   if (forThisPostFlair)
-    scope +=
-      " Currently, this limit or requirement applies across all posts with this post's flair.";
-  else if (forThisPostTitle)
-    scope +=
-      " Currently, this limit or requirement applies across all posts with a similar post title.";
+    scope += " Currently, this limit or requirement applies across all posts with this post's flair.";
   return scope;
 }
 
