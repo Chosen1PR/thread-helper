@@ -4,9 +4,10 @@
     "entry": "src/main.tsx",
     "triggers": [
       "onCommentCreate",
-      "onCommentSubmit",
+      "onCommentUpdate",
       "onCommentDelete",
-      "onPostSubmit"
+      "onPostSubmit",
+      "onPostUpdate"
     ]
   },
   "marketingAssets": {

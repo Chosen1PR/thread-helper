@@ -22,6 +22,8 @@ import {
   userIsMod,
 } from "./utils-async.js"
 
+import { CommentId } from "./types.js";
+
 Devvit.configure({
   redis: true,
   redditAPI: true,
@@ -34,7 +36,7 @@ Devvit.addSettings([
     name: "enable-app",
     label: "Enable Referral Thread Helper",
     helpText:
-      "Enables the Referral Thread Helper app to limit comments on threads based on flair or title keywords.",
+      "Enables the Referral Thread Helper app to limit comments on threads based on post flair.",
     defaultValue: true,
     scope: "installation",
   },
@@ -98,7 +100,7 @@ Devvit.addSettings([
   },
   {
     type: "group",
-    label: "Duplicate Comments Settings",
+    label: "Duplicate Comments",
     fields: [
       // Config setting for removing duplicate comments
       {
@@ -201,16 +203,6 @@ Devvit.addSettings([
     type: "group",
     label: "Comment Content Requirements",
     fields: [
-      // Config setting for requiring domain-matching comments
-      {
-        type: "boolean",
-        name: "require-domains",
-        label: "Require links from domain list",
-        helpText:
-          "If enabled, comments in thread must contain at least one link from the domain list above to avoid removal.",
-        defaultValue: false,
-        scope: "installation",
-      },
       // Config setting for removing domain-matching comments outside of thread
       {
         type: "boolean",
@@ -218,6 +210,16 @@ Devvit.addSettings([
         label: "Remove links outside of thread",
         helpText:
           "If enabled, comments outside of the thread (elsewhere in the subreddit) that contain one of the listed domains will be removed.",
+        defaultValue: false,
+        scope: "installation",
+      },
+      // Config setting for requiring domain-matching comments
+      {
+        type: "boolean",
+        name: "require-domains",
+        label: "Require links from domain list in thread",
+        helpText:
+          "If enabled, comments in thread must contain at least one link from the domain list above to avoid removal.",
         defaultValue: false,
         scope: "installation",
       },
@@ -272,15 +274,31 @@ Devvit.addSettings([
       },
     ],
   },
-  // Config setting for PMing a user when their comment is removed
   {
-    type: "boolean",
-    name: "pm-user",
-    label: "Message users about comment removal",
-    defaultValue: false,
-    helpText:
-      "Message users privately from the bot account (not modmail) when their comment is removed and explain why.",
-    scope: "installation",
+    type: "group",
+    label: "User Interaction",
+    fields: [
+      // Config setting for PMing a user when their comment is removed
+      {
+        type: "boolean",
+        name: "pm-user",
+        label: "Message users about comment removal",
+        defaultValue: false,
+        helpText:
+          "Message users privately from the bot account (not modmail) when their comment is removed and explain why.",
+        scope: "installation",
+      },
+      // Config setting for mod note
+      {
+        type: "boolean",
+        name: "add-mod-note",
+        label: "Add mod note on users after removal",
+        defaultValue: false,
+        helpText:
+          "Add a mod note to users when their comment is removed from the designated thread.",
+        scope: "installation",
+      }
+    ]
   },
   // Config setting for exempting moderators to all rules
   {
@@ -301,23 +319,32 @@ Devvit.addMenuItem({
   forUserType: "moderator",
   onPress: async (event, context) => {
     context.ui.navigateTo(
-      `https://developers.reddit.com/r/${context.subredditName!}/apps/${context.appName}`
+      `https://developers.reddit.com/r/${context.subredditName!}/apps/${context.appSlug}`
     );
   },
 });
 
 // Create comment trigger handler
 Devvit.addTrigger({
-  event: "CommentCreate",
+  events: ["CommentCreate", "CommentUpdate"],
   onEvent: async (event, context) => {
     // Check if app is enabled
     const appEnabled = await context.settings.get("enable-app");
     if (!appEnabled) return; // If app is not enabled, don't do anything.
-    const settings = await context.settings.getAll();
-    // Check if this post flair or title applies
+    // Check if this post flair applies
     const postFlairIsApplicable = await isPostFlairApplicable(event.post?.linkFlair?.text ?? "", context);
-    if (!postFlairIsApplicable)
-      return;  // Rest of the code only applies to posts with specified flair or title keywords.
+    if (!postFlairIsApplicable) {
+      // If this post does not match any flair, check if the comment is allowed outside of the thread.
+      await removeCommentOutsideThread(
+        event.comment?.id!,
+        event.comment?.body!,
+        event.author?.name!,
+        event.post?.permalink!,
+        event.comment?.permalink!,
+        context
+      );
+      return; // Rest of the code only applies to posts with specified flair.
+    }
     // Get comment author info and check if they are a mod
     const userId = event.author?.id!;
     const username = event.author?.name!;
@@ -328,81 +355,37 @@ Devvit.addTrigger({
     var commentRemovedReason = ""; // needed if PM is sent to user
     const postId = event.post?.id!;
     const commentId = event.comment?.id!;
-    // If everything looks good, this is where we remove duplicate comments
-    const removeDuplicates = await context.settings.get("remove-duplicates") as boolean; //check if removing duplicates enabled
-    if (removeDuplicates) {
-      commentRemoved = await removeDuplicateComment(userId, postId, commentId, userIsExempt, context);
-      if (commentRemoved) commentRemovedReason = "duplicate";
-    }
-    // If comment still not removed, remove replies according to setting
-    if (!commentRemoved) {
-      const removeReplies = await context.settings.get("remove-replies") as boolean; //check if removing replies enabled
-      if (removeReplies) {
-        commentRemoved = await lockTopLevelCommentOrRemoveReply(commentId, userIsExempt, context);
-        if (commentRemoved) commentRemovedReason = "reply";
+    // If everything looks good, this is where we remove duplicate comments and comment replies.
+    if (event.type == "CommentCreate") {
+      const removeDuplicates = await context.settings.get("remove-duplicates") as boolean; //check if removing duplicates enabled
+      if (removeDuplicates) {
+        commentRemoved = await removeDuplicateComment(userId, postId, commentId, userIsExempt, context);
+        if (commentRemoved) commentRemovedReason = "duplicate";
+      }
+      // If comment not removed yet, remove replies according to setting.
+      if (!commentRemoved) {
+        const removeReplies = await context.settings.get("remove-replies") as boolean; //check if removing replies enabled
+        if (removeReplies) {
+          commentRemoved = await lockTopLevelCommentOrRemoveReply(commentId, userIsExempt, context);
+          if (commentRemoved) commentRemovedReason = "reply";
+        }
       }
     }
-    // If comment was removed and PM setting is enabled, send PM to user
-    if (commentRemoved) {
-      // Optional: inform user via PM that they have reached the limit.
-      const pmUserSetting = (await context.settings.get("pm-user")) as boolean;
-      if (pmUserSetting) {
-        const subredditName = context.subredditName!;
-        const postLink = event.post?.permalink!;
-        const commentLink = event.comment?.permalink!;
-        var reason = getReasonForRemoval(commentRemovedReason);
-        reason += getReasonScope(postFlairIsApplicable);
-        pmUser(username, subredditName, commentLink, postLink, reason, context);
-      }
-    }
-  },
-});
-
-// Create comment trigger handler
-Devvit.addTrigger({
-  event: "CommentSubmit",
-  onEvent: async (event, context) => {
-    // Check if app is enabled
-    const appEnabled = await context.settings.get("enable-app");
-    if (!appEnabled) return; // If app is not enabled, don't do anything.
-    // Check if this post flair or title applies
-    const postFlairIsApplicable = await isPostFlairApplicable(event.post?.linkFlair?.text ?? "", context);
-    if (!postFlairIsApplicable) {
-      // If this post does not match any flair or title keywords, check if the comment is allowed outside of the thread.
-      await removeCommentOutsideThread(
-        event.comment?.id!,
-        event.comment?.body!,
-        event.author?.name!,
-        event.post?.permalink!,
-        event.comment?.permalink!,
-        context
-      );
-      return; // Rest of the code only applies to posts with specified flair or title keywords.
-    }
-    // Get comment author info and check if they are a mod
-    const userId = event.author?.id!;
-    const username = event.author?.name!;
-    const authorIsMod = await userIsMod(username, context);
-    const modsExempt = (await context.settings.get("mods-exempt")) as boolean;
-    const userIsExempt = authorIsMod && modsExempt;
-    var commentRemoved = false;
-    var commentRemovedReason = ""; // needed if PM is sent to user
-    const commentId = event.comment?.id!;
-    // If everything looks good, this is where we check user requirements
-    if (!userIsExempt) {
+    // If comment not removed yet, check user requirements.
+    if (!commentRemoved && !userIsExempt) {
       const userFlair = event.author?.flair;
       const karma = event.author?.karma!;
       commentRemovedReason = await removeCommentAccordingToUserRequirements(commentId, userId, userFlair, karma, context);
       commentRemoved = (commentRemovedReason != "");
     }
-    // If comment still not removed, check comment content
+    // If comment still not removed, check comment content.
     if (!commentRemoved && !userIsExempt) {
       commentRemovedReason = await removeCommentAccordingToContentRequirements(event.comment?.id!, event.comment?.body!, context);
       commentRemoved = (commentRemovedReason != "");
     }
-    // If comment was removed and PM setting is enabled, send PM to user
+    // If comment was removed and PM setting is enabled, send PM to user.
     if (commentRemoved) {
-      // Optional: inform user via PM that they have reached the limit.
+      // Optional: inform user via PM that their comment was removed and give a reason why.
       const pmUserSetting = (await context.settings.get("pm-user")) as boolean;
       if (pmUserSetting) {
         const subredditName = context.subredditName!;
@@ -411,6 +394,14 @@ Devvit.addTrigger({
         var reason = getReasonForRemoval(commentRemovedReason);
         reason += getReasonScope(postFlairIsApplicable);
         pmUser(username, subredditName, commentLink, postLink, reason, context);
+      }
+      // Optional: add mod note to user with reason for removal.
+      const modNoteSetting = (await context.settings.get("add-mod-note")) as boolean;
+      if (modNoteSetting) {
+        const noteText = `Referral removed: ${commentRemovedReason}`;
+        const subredditName = context.subredditName!;
+        const commentId = event.comment?.id! as CommentId;
+        await context.reddit.addModNote({ subreddit: subredditName, user: username, note: noteText, redditId: commentId });
       }
     }
   },
@@ -421,13 +412,15 @@ Devvit.addTrigger({
   event: "CommentDelete",
   onEvent: async (event, context) => {
     //console.log(`A new comment was deleted: ${JSON.stringify(event)}`);
+    const source = event.source.valueOf(); // 3 = mod; 2 = admin; 1 = user; 0 = unknown; -1 = unrecognized
+    if (source != 1) return; // If a comment was not deleted by its author, don't do anything.
+    // Check if app is enabled
+    const appEnabled = await context.settings.get("enable-app");
+    if (!appEnabled) return; // If app is not enabled, don't do anything.
     const removeDuplicates = (await context.settings.get("remove-duplicates")) as boolean; //check if duplicate removal enabled
     if (!removeDuplicates) return; // If not enabled, don't do anything.
     const updateDelete = await context.settings.get("update-comment-delete"); //check if update with delete enabled
     if (!updateDelete) return; // If not enabled, don't do anything.
-    const source = event.source.valueOf(); // 3 = mod; 2 = admin; 1 = user; 0 = unknown; -1 = unrecognized
-    if (source != 1) return; // If a comment was not deleted by its author, don't do anything.
-
     // If we got here, then "remove duplicates" is enabled and "update with comment deletes" is enabled.
     const userId = event.author?.id!;
     const postId = event.postId!;
@@ -448,14 +441,14 @@ Devvit.addTrigger({
 
 // Remove posts outside of thread: post trigger handler
 Devvit.addTrigger({
-  event: "PostSubmit",
+  events: ["PostSubmit", "PostUpdate"],
   onEvent: async (event, context) => {
     // Check if app is enabled
     const appEnabled = (await context.settings.get("enable-app")) as boolean;
     if (!appEnabled) return; // If app is not enabled, don't do anything.
     // Check if removing posts is enabled
     const removePosts = await (context.settings.get("remove-posts")) as boolean;
-    if (! removePosts) return; // If setting is disabled, don't do anything.
+    if (!removePosts) return; // If setting is disabled, don't do anything.
     // Check if author is a mod and mods are exempt
     const modsExempt = (await context.settings.get("mods-exempt")) as boolean;
     const authorIsMod = await userIsMod(event.author?.name!, context);

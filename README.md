@@ -29,8 +29,8 @@ For even further automation with referral threads or other posts, feel free to c
 ### [0.1.10] (2026-02-28)
 
 #### Bug Fixes
-
-- App can now apply all rules and settings to edited comments instead of only new comments.
+- App now applies all rules and settings to edited comments in addition to new comments.
+- Dropped support for post title keyword list due to disuse.
 
 ### [0.1.9] (2026-01-15)
 
