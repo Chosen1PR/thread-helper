@@ -37,7 +37,8 @@ export async function removeCommentOutsideThread(
       }
       if (containsDomain) {
         // If the comment contains a whitelisted domain, remove it.
-        await context.reddit.remove(commentId, false);
+        const removeAsSpam = (await context.settings.get("remove-posts-as-spam")) as boolean;
+        await context.reddit.remove(commentId, removeAsSpam);
         // Optionally PM user about removal
         const pmUserSetting = (await context.settings.get("pm-user")) as boolean;
         if (pmUserSetting) {

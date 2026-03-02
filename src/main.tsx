@@ -82,7 +82,7 @@ Devvit.addSettings([
         name: "remove-posts-as-spam",
         label: "Remove posts as spam",
         helpText:
-          `If enabled, "Spam" will be the removal reason for removed posts.`,
+          `If enabled, "Spam" will be the removal reason for removed posts. Also affects comments outside of the designated thread.`,
         defaultValue: false,
         scope: "installation",
       },
