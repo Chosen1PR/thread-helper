@@ -29,7 +29,12 @@ For even further automation with referral threads or other posts, feel free to c
 ### [0.1.10] (2026-02-28)
 
 #### Bug Fixes
+
 - App now applies all rules and settings to edited comments in addition to new comments.
+
+#### Features
+
+- App can now add a mod note to users when their comment is removed from the designated thread with a short 1 to 2 word removal reason.
 - Dropped support for post title keyword list due to disuse.
 
 ### [0.1.9] (2026-01-15)
