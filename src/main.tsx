@@ -295,7 +295,7 @@ Devvit.addSettings([
         label: "Add mod note on users after removal",
         defaultValue: false,
         helpText:
-          "Add a mod note to users when their comment is removed from the designated thread.",
+          "Add a mod note to users when their comment is removed from the designated thread with a short removal reason.",
         scope: "installation",
       }
     ]
