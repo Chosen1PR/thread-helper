@@ -415,7 +415,7 @@ Devvit.addTrigger({
         const subredditName = context.subredditName!;
         const postLink = event.post?.permalink!;
         const commentLink = event.comment?.permalink!;
-        var reason = getReasonForRemoval(commentRemovedReason);
+        var reason = getReasonForRemoval(commentRemovedReason, subredditName);
         reason += getReasonScope(postFlair);
         pmUser(username, subredditName, commentLink, postLink, reason, context);
       }
