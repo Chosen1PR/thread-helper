@@ -68,9 +68,7 @@ export function getReasonForRemoval(reasonWord: string, subredditName: string) {
     case "karma": reason += "- You do not meet the minimum total karma requirement to comment on this post."; break;
     case "post-karma": reason += "- You do not meet the minimum post karma requirement to comment on this post."; break;
     case "comment-karma": reason += "- You do not meet the minimum comment karma requirement to comment on this post."; break;
-    case "subreddit-karma": reason += `- Your karma in r/${subredditName} is less than the minimum community karma required to comment on this post.`
-      + `\n\nTo increase your community karma, you can contribute positively to r/${subredditName}`
-      + ` by making high-quality posts and comments that follow the rules.`; break;
+    case "subreddit-karma": reason += `- Your karma in r/${subredditName} is less than the minimum community karma required to comment on this post.`; break;
     case "account-age": reason += "- You do not meet the minimum account age requirement to comment on this post."; break;
     case "flair-required": reason += "- You must have user flair to comment on this post."; break;
     case "flair-specific": reason += "- You do not have the required user flair to comment on this post."; break;

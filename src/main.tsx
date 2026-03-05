@@ -417,7 +417,7 @@ Devvit.addTrigger({
         const commentLink = event.comment?.permalink!;
         var reason = getReasonForRemoval(commentRemovedReason, subredditName);
         reason += getReasonScope(postFlair);
-        pmUser(username, subredditName, commentLink, postLink, reason, context);
+        pmUser(username, commentLink, postLink, reason, context);
       }
       // Optional: add mod note to user with reason for removal.
       const modNoteSetting = (await context.settings.get("add-mod-note")) as boolean;

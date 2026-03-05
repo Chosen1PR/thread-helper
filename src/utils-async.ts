@@ -338,23 +338,28 @@ export async function getAuthorsCommentCountInPost(
 // Helper function to PM a user when their comment is removed
 export async function pmUser(
   username: string,
-  subredditName: string,
   commentLink: string,
   postLink: string,
   reason: string,
   context: TriggerContext
 ) {
-  if (username == "AutoModerator" || username == (subredditName + "-ModTeam"))
+  const subredditName = context.subredditName!;
+  if (username == "AutoModerator" || username == context.appSlug || username == (subredditName + "-ModTeam"))
     return; // If user is known bot, do nothing.
   const subjectText = `Your comment in r/${subredditName} was removed`;
   var messageText = `Hi ${username}, [**your comment**](${commentLink}) in [this post](${postLink}) was removed due to the following reason:\n\n`;
   const commentCountDislaimer = `\n\nTo reduce your comment count so it is once again under the limit, you can delete your comment(s).`;
+  const subKarmaDisclaimer = `\n\nTo increase your community karma, you can contribute positively to r/${subredditName}`
+    + ` by making high-quality posts and comments that follow the rules.`;
   const inboxDisclaimer = `\n\n*This inbox is not monitored. If you have any questions, please message the moderators of r/${subredditName}.*`;
   var reasonIsDuplicate = reason.startsWith("- Comments on this post are limited to one");
+  var reasonIsSubKarma = reason.startsWith("- Your karma in r/");
   if (reasonIsDuplicate) {
     reasonIsDuplicate = (await context.settings.get("update-comment-delete")) as boolean;
   } // Only send the comment count disclaimer if the setting to update with comment deletes is enabled.
   if (reasonIsDuplicate) messageText += reason + commentCountDislaimer + inboxDisclaimer;
+  // Only send the subreddit karma disclaimer if the reason for removal is due to subreddit karma.
+  else if (reasonIsSubKarma) messageText += reason + subKarmaDisclaimer + inboxDisclaimer;
   // any other reason besides removing duplicate comments
   else messageText += reason + inboxDisclaimer;
   if (username) {
