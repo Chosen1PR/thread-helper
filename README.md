@@ -27,7 +27,7 @@ For even further automation with referral threads or other posts, feel free to c
 
 ## Changelog
 
-### [0.1.13] (2026-03-04)
+### [0.1.14] (2026-03-04)
 
 #### Features
 

@@ -81,7 +81,7 @@ export function getReasonForRemoval(reasonWord: string, subredditName: string) {
 
 // Helper function to get the full text for which post(s) the comment removal reason applies
 export function getReasonScope(flairText: string) {
-  return ` Currently, this limit or requirement applies across all posts with the "${flairText}" flair.`;
+  return ` This limit or requirement applies across all posts with the "${flairText}" flair.`;
 }
 
 // Helper function to validate karma setting
