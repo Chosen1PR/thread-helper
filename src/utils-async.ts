@@ -8,8 +8,8 @@ import {
     isValidAccountAgeSetting,
     matchesRegex,
     textHasMatchInList,
-    textContainsKeywordFromList
 } from "./utils.js"
+import { CommentId } from "./types.js";
 
 // Remove comments outside of megathread.
 export async function removeCommentOutsideThread(
@@ -48,6 +48,15 @@ export async function removeCommentOutsideThread(
           //const username = event.author?.name!;
           await pmUserOutsideThread(username, subredditName, commentLink, postLink, context);
         }
+        // Optionally add mod note about removal
+        const modNoteSetting = (await context.settings.get("add-mod-note")) as boolean;
+        if (modNoteSetting) {
+          const noteText = `Comment removed: outside designated thread`;
+          const subredditName = context.subredditName!;
+          await context.reddit.addModNote({ subreddit: subredditName, user: username, note: noteText, redditId: commentId as CommentId, label: "SPAM_WARNING" });
+        }
+        // Optionally notify mods about removal via modmail
+        await notifyModsForCommentOutsideThread(commentLink, commentBody, username, postLink, context);
       }
     }
   }
@@ -123,7 +132,6 @@ export async function removeCommentAccordingToUserRequirements(
   if (!author) return "";
   const linkKarma = author?.linkKarma!;
   const commentKarma = author?.commentKarma!;
-  //const subredditKarma = author?.getUserKarmaForCurrentSubreddit();
   const accountCreated = author?.createdAt!;
   // If comment not removed yet, check post karma requirement.
   if (!commentRemoved) {
@@ -147,6 +155,19 @@ export async function removeCommentAccordingToUserRequirements(
       }
     }
   }
+  // If comment still not removed, check subreddit karma requirement.
+  if (!commentRemoved) {
+    const minSubKarma = (await context.settings.get("min-sub-karma")) as number; //get minimum subreddit karma
+    if (isValidKarmaSetting(minSubKarma)) {
+      const subKarmaResponse = await author?.getUserKarmaFromCurrentSubreddit();
+      const subredditKarma = (subKarmaResponse.fromPosts ?? 0) + (subKarmaResponse.fromComments ?? 0);
+      if (subredditKarma < minSubKarma) {
+        await context.reddit.remove(commentId, false);
+        commentRemoved = true;
+        commentRemovedReason = "subreddit-karma";
+      }
+    }
+  }
   // If comment still not removed, check account age requirement.
   if (!commentRemoved) {
     const minAccountAgeDays = (await context.settings.get("min-account-age-days")) as number; //get minimum account age
@@ -157,7 +178,7 @@ export async function removeCommentAccordingToUserRequirements(
       if (accountAgeDays < minAccountAgeDays) {
         await context.reddit.remove(commentId, false);
         commentRemoved = true;
-        commentRemovedReason = "age";
+        commentRemovedReason = "account-age";
       }
     }
   }
@@ -188,7 +209,7 @@ export async function removeCommentAccordingToUserRequirements(
       else { // User does not have flair
         await context.reddit.remove(commentId, false);
         commentRemoved = true;
-        commentRemovedReason = "flair";
+        commentRemovedReason = "flair-required";
       }
     }
   }
@@ -261,7 +282,7 @@ export async function removeCommentAccordingToContentRequirements(
         if (!containsDomain) {
           await context.reddit.remove(commentId, false);
           commentRemoved = true;
-          commentRemovedReason = "domain";
+          commentRemovedReason = "domain-required";
         }
       }
     }
@@ -326,7 +347,7 @@ export async function pmUser(
   if (username == "AutoModerator" || username == (subredditName + "-ModTeam"))
     return; // If user is known bot, do nothing.
   const subjectText = `Your comment in r/${subredditName} was removed`;
-  var messageText = `Hi, [your comment](${commentLink}) in [this post](${postLink}) was removed due to the following reason:\n\n`;
+  var messageText = `Hi ${username}, [**your comment**](${commentLink}) in [this post](${postLink}) was removed due to the following reason:\n\n`;
   const commentCountDislaimer = `\n\nTo reduce your comment count so it is once again under the limit, you can delete your comment(s).`;
   const inboxDisclaimer = `\n\n*This inbox is not monitored. If you have any questions, please message the moderators of r/${subredditName}.*`;
   var reasonIsDuplicate = reason.startsWith("- Comments on this post are limited to one");
@@ -349,7 +370,7 @@ export async function pmUser(
       });
     } catch (error) {
       if (error == "NOT_WHITELISTED_BY_USER_MESSAGE")
-        console.log(`Error: u/${username} might have messaging disabled or might be blocking the u/${context.appName} app account.`);
+        console.log(`Error: u/${username} might have messaging disabled or might be blocking the u/${context.appSlug} app account.`);
       else console.log(`Error sending PM to u/${username}: ${error}`);
     }
   } else {
@@ -368,7 +389,8 @@ export async function pmUserOutsideThread(
   if (username == "AutoModerator" || username == (subredditName + "-ModTeam"))
     return; // If user is known bot, do nothing
   const subjectText = `Your comment in r/${subredditName} was removed`;
-  var messageText = `Hi, [your comment](${commentLink}) in [this post](${postLink}) was removed because it was identified as being outside of the designated thread.`;
+  var messageText = `Hi ${username}, [**your comment**](${commentLink}) in [this post](${postLink}) was removed because it was identified as being outside of the designated thread.`
+    + `\n\nPlease ensure you only share links/codes in the designated referral thread to avoid further action.`;
   const inboxDisclaimer = `\n\n*This inbox is not monitored. If you have any questions, please message the moderators of r/${subredditName}.*`;
   messageText = messageText + inboxDisclaimer;
   if (username) {
@@ -393,8 +415,8 @@ export async function pmUserOutsideThread(
 // Helper function to comment on removed posts
 export async function commentOnRemovedPost(postId: string, context: TriggerContext) {
   const commentText =
-    `Your post was removed because it contains a link from a domain that is restricted to an already existing thread.\n\n` +
-    `Please post such links only in the designated thread.`;
+    `Your post was removed because it contains a link from a domain that is restricted to an already existing thread.`
+    + `\n\nPlease ensure you only share links/codes in the designated thread to avoid further action.`;
   const newComment = await context.reddit.submitComment({id: postId, text: commentText});
   await newComment.distinguish(true); // always distinguish as mod and pin comment
   await newComment.lock(); // always lock comment
@@ -406,7 +428,7 @@ export async function userIsMod(username: string, context: TriggerContext) {
   if (username == undefined || username == null ||  username == "") return false;
   const subredditName = context.subredditName!;
   // Check if known bot.
-  if (username == "AutoModerator" || username == (subredditName + "-ModTeam") || username == context.appName)
+  if (username == "AutoModerator" || username == (subredditName + "-ModTeam") || username == context.appSlug)
     return true; // Return true for known bots that are mods.
   const user = await context.reddit.getUserByUsername(username);
   if (!user) return false; // If user not found, return false.
@@ -416,24 +438,49 @@ export async function userIsMod(username: string, context: TriggerContext) {
   else return true; // Otherwise, it's a mod; return true.
 }
 
-// Helper function for determining if comment author is a moderator
-/*export async function userIsModLegacy(username: string, context: TriggerContext) {
-  // If user not found, return false.
-  if (username == undefined || username == null ||  username == "") return false; 
+// Helper function to notify mods via modmail when a comment is removed for being outside of the designated thread
+export async function notifyModsForCommentOutsideThread(
+  commentLink: string,
+  commentBody: string,
+  username: string,
+  postLink: string,
+  context: TriggerContext
+) {
+  const warnMods = (await context.settings.get("warn-modmail")) as boolean;
+  if (!warnMods) return; // If the setting is not enabled, do nothing.
   const subredditName = context.subredditName!;
-  // Check if known bot.
-  if (username == "AutoModerator" || username == (subredditName + "-ModTeam"))
-    return true; // Return true for known bots that are mods.
-  const modList = context.reddit.getModerators({ subredditName: subredditName }!);
-  const mods = await modList.all();
-  var isMod = false;
-  //for each mod in the list, check if their user id matches the comment author's user id
-  for (let i = 0; i < mods.length; i++) {
-    if (username == mods[i].username) {
-      isMod = true;
-      break;
-    }
+  const subredditId = context.subredditId!;
+  const subjectText = `Removed comment outside of designated thread`;
+  const messageText = `# Referral Thread Helper\n\n`
+    + `[**A comment**](${commentLink}) by u/${username} was removed because it was identified as being outside of the designated thread in r/${subredditName}.`
+    + `\n\n[**Inspect the post**](${postLink}) for more context or to check for more rule violations.\n\nFull comment text:\n\n---\n\n${commentBody}`;
+  try {
+    await context.reddit.modMail.createModNotification({
+      subject: subjectText,
+      bodyMarkdown: messageText,
+      subredditId: subredditId
+    });
+  } catch (error) {
+    console.log(`Error sending modmail about comment removal to r/${subredditName} mods: ${error}`);
   }
-  return isMod;
-}*/
+}
 
+// Helper function to notify mods via modmail when a post is removed for being outside of the designated thread
+export async function notifyModsForPostOutsideThread(postLink: string, username: string, context: TriggerContext) {
+  const warnMods = (await context.settings.get("warn-modmail")) as boolean;
+  if (!warnMods) return; // If the setting is not enabled, do nothing.
+  const subredditName = context.subredditName!;
+  const subredditId = context.subredditId!;
+  const subjectText = `Removed post outside of designated thread`;
+  const messageText = `# Referral Thread Helper\n\n`
+    + `[**A post**](${postLink}) by u/${username} was removed because it was identified as being outside of the designated thread in r/${subredditName}.`;
+  try {
+    await context.reddit.modMail.createModNotification({
+      subject: subjectText,
+      bodyMarkdown: messageText,
+      subredditId: subredditId
+    });
+  } catch (error) {
+    console.log(`Error sending modmail about comment removal to r/${subredditName} mods: ${error}`);
+  }
+}

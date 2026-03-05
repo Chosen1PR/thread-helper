@@ -44,18 +44,6 @@ export function postContainsBannedDomain(postTitle: string, postBody: string | u
   return false;
 }
 
-// Helper function for keyword match from a given list
-export function textContainsKeywordFromList(text: string, keywordList: string) {
-  text = text.trim(); //trim unneeded white space
-  var keywords = keywordList.split(","); //separate keywords in list
-  for (let i = 0; i < keywords.length; i++) {
-    const keyword = keywords[i].trim(); //for each keyword in the list, trim white space as well
-    if (text.includes(keyword)) return true; // match found
-  }
-  //reached end of list, no match
-  return false;
-}
-
 // Helper function for text match from a given list
 export function textHasMatchInList(text: string, textList: string) {
   text = text.trim(); //trim unneeded white space
@@ -71,55 +59,29 @@ export function textHasMatchInList(text: string, textList: string) {
 // Helper function to get reason for why a comment was removed
 export function getReasonForRemoval(reasonWord: string) {
   var reason = "";
-  if (reasonWord == "duplicate") {
-    reason += "- Comments on this post are limited to one per user.";
-  }
-  else if (reasonWord == "reply") {
-    reason += "- Comment replies are disabled on this post.";
-  }
-  else if (reasonWord == "image") {
-    reason += "- Comments containing images or reaction gifs are not allowed on this post.";
-  }
-  else if (reasonWord == "header") {
-    reason += "- Comments containing large header text are not allowed on this post.";
-  }
-  else if (reasonWord == "length") {
-    reason += "- Your comment is too long.";
-  }
-  else if (reasonWord == "karma") {
-    reason += "- You do not meet the minimum total karma requirement to comment on this post.";
-  }
-  else if (reasonWord == "post-karma") {
-    reason += "- You do not meet the minimum post karma requirement to comment on this post.";
-  }
-  else if (reasonWord == "comment-karma") {
-    reason += "- You do not meet the minimum comment karma requirement to comment on this post.";
-  }
-  else if (reasonWord == "age") {
-    reason += "- You do not meet the minimum account age requirement to comment on this post.";
-  }
-  else if (reasonWord == "flair") {
-    reason += "- You must have user flair to comment on this post.";
-  }
-  else if (reasonWord == "flair-specific") {
-    reason += "- You do not have the required user flair to comment on this post.";
-  }
-  else if (reasonWord == "domain") {
-    reason += "- Your comment does not contain any of the required link domains.";
-  }
-  else if (reasonWord == "regex") {
-    reason += "- Your comment does not match the required format.";
+  switch (reasonWord) {
+    case "duplicate": reason += "- Comments on this post are limited to one per user."; break;
+    case "reply": reason += "- Comment replies are disabled on this post."; break;
+    case "image": reason += "- Comments containing images or reaction gifs are not allowed on this post."; break;
+    case "header": reason += "- Comments containing large header text are not allowed on this post."; break;
+    case "length": reason += "- Your comment is too long."; break;
+    case "karma": reason += "- You do not meet the minimum total karma requirement to comment on this post."; break;
+    case "post-karma": reason += "- You do not meet the minimum post karma requirement to comment on this post."; break;
+    case "comment-karma": reason += "- You do not meet the minimum comment karma requirement to comment on this post."; break;
+    case "subreddit-karma": reason += "- You do not meet the minimum subreddit-specific karma requirement to comment on this post."; break;
+    case "account-age": reason += "- You do not meet the minimum account age requirement to comment on this post."; break;
+    case "flair-required": reason += "- You must have user flair to comment on this post."; break;
+    case "flair-specific": reason += "- You do not have the required user flair to comment on this post."; break;
+    case "domain-required": reason += "- Your comment does not contain any of the required link domains."; break;
+    case "regex": reason += "- Your comment does not match the required format."; break;
   }
   if (reason != "") return reason;
   else return reasonWord;
 }
 
 // Helper function to get the full text for which post(s) the comment removal reason applies
-export function getReasonScope(forThisPostFlair: boolean) {
-  var scope = "";
-  if (forThisPostFlair)
-    scope += " Currently, this limit or requirement applies across all posts with this post's flair.";
-  return scope;
+export function getReasonScope(flairText: string) {
+  return ` Currently, this limit or requirement applies across all posts with the "${flairText}" flair.`;
 }
 
 // Helper function to validate karma setting

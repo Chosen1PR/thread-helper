@@ -6,15 +6,16 @@ Do you have referral megathreads in your community for certain products or servi
 - Disable comment replies so that only top-level comments are allowed.
 - Disable large header text, images, and reaction gifs only in referral threads.
 - Define a maximum number of characters for referral comments.
-- Require a minimum post karma, comment karma, and/or combined karma to comment in referral threads. These user requirements are hidden and never publicly exposed.
+- Require a minimum post karma, comment karma, combined karma, and/or subreddit-specific karma to comment in referral threads. These user requirements are hidden and never publicly exposed.
 - Allow only flaired users to comment in referral threads, and optionally define a list of required flair CSS classes.
 - Define a list of acceptable link domains for referral links.
 - Require links in thread comments.
 - Remove comments from outside the thread that contain a referral link.
 - Define regexes that comments must have or must not match.
-- Optionally message users privately from the bot account (not modmail) when their comment is removed and explain why.
 - Remove posts that contain referral links.
+- Optionally message users privately from the bot account (not modmail) when their comment is removed and explain why.
 - Optionally comment on posts that contain referral links.
+- Optionally receive modmail notifications when a post or comment outside of the designated thread is removed.
 
 For even further automation with referral threads or other posts, feel free to check out some of my other apps!
 
@@ -25,6 +26,14 @@ For even further automation with referral threads or other posts, feel free to c
 ---
 
 ## Changelog
+
+### [0.1.11] (2026-03-04)
+
+#### Features
+
+- Added the ability to require a specific amount of subreddit-specific karma to share referrals.
+- Extended the mod note functionality from the previous update to posts and comments *outside* of the designated thread.
+- Added the option to receive modmail notifications when a post or comment outside of the designated thread is removed.
 
 ### [0.1.10] (2026-02-28)
 

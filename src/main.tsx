@@ -20,9 +20,10 @@ import {
   pmUser,
   commentOnRemovedPost,
   userIsMod,
+  notifyModsForPostOutsideThread
 } from "./utils-async.js"
 
-import { CommentId } from "./types.js";
+import { CommentId, PostId } from "./types.js";
 
 Devvit.configure({
   redis: true,
@@ -168,6 +169,16 @@ Devvit.addSettings([
           "Minimum comment karma a user must have to comment on threads where comment limits are enforced.",
         scope: "installation",
       },
+      // Config setting for minimum subreddit karma
+      {
+        type: "number",
+        name: "min-sub-karma",
+        label: "Minimum subreddit karma",
+        defaultValue: 0,
+        helpText:
+          "Minimum subreddit-specific karma a user must have to comment on threads where comment limits are enforced.",
+        scope: "installation",
+      },
       // Config setting for minimum account age
       {
         type: "number",
@@ -292,10 +303,22 @@ Devvit.addSettings([
       {
         type: "boolean",
         name: "add-mod-note",
-        label: "Add mod note on users after removal",
+        label: "Add mod note to users after removal",
         defaultValue: false,
         helpText:
-          "Add a mod note to users when their comment is removed from the designated thread with a short removal reason.",
+          "Add a mod note to users when their comment is removed and include a short removal reason. " +
+          "A regular note with no label will be added for comments removed inside the designated thread, " +
+          "while a note with the 'SPAM_WARNING' label will be added for posts or comments removed outside the thread.",
+        scope: "installation",
+      },
+      // Config setting for modmail
+      {
+        type: "boolean",
+        name: "warn-modmail",
+        label: "Notify mods of removal outside of thread",
+        defaultValue: false,
+        helpText:
+          "Send a notification modmail to mods when a post or comment is removed outside of the designated thread.",
         scope: "installation",
       }
     ]
@@ -355,6 +378,7 @@ Devvit.addTrigger({
     var commentRemovedReason = ""; // needed if PM is sent to user
     const postId = event.post?.id!;
     const commentId = event.comment?.id!;
+    const postFlair = event.post?.linkFlair?.text ?? "";
     // If everything looks good, this is where we remove duplicate comments and comment replies.
     if (event.type == "CommentCreate") {
       const removeDuplicates = await context.settings.get("remove-duplicates") as boolean; //check if removing duplicates enabled
@@ -392,13 +416,13 @@ Devvit.addTrigger({
         const postLink = event.post?.permalink!;
         const commentLink = event.comment?.permalink!;
         var reason = getReasonForRemoval(commentRemovedReason);
-        reason += getReasonScope(postFlairIsApplicable);
+        reason += getReasonScope(postFlair);
         pmUser(username, subredditName, commentLink, postLink, reason, context);
       }
       // Optional: add mod note to user with reason for removal.
       const modNoteSetting = (await context.settings.get("add-mod-note")) as boolean;
       if (modNoteSetting) {
-        const noteText = `Referral removed: ${commentRemovedReason}`;
+        const noteText = `Comment removed: ${commentRemovedReason}. Post flair: ${postFlair}.`;
         const subredditName = context.subredditName!;
         const commentId = event.comment?.id! as CommentId;
         await context.reddit.addModNote({ subreddit: subredditName, user: username, note: noteText, redditId: commentId });
@@ -451,19 +475,18 @@ Devvit.addTrigger({
     if (!removePosts) return; // If setting is disabled, don't do anything.
     // Check if author is a mod and mods are exempt
     const modsExempt = (await context.settings.get("mods-exempt")) as boolean;
-    const authorIsMod = await userIsMod(event.author?.name!, context);
+    const authorName = event.author?.name ?? "";
+    const authorIsMod = await userIsMod(authorName, context);
     if (authorIsMod && modsExempt) return; // If author is a mod and mods are exempt, don't do anything.
     // Check post content for link from domain list
     const domainList = (await context.settings.get("domain-list")) as string;
-    var containsDomain = postContainsBannedDomain(
-      event.post?.title!,
-      event.post?.selftext,
-      event.post?.url,
-      domainList
-    );
+    const postTitle = event.post?.title ?? "";
+    const postText = event.post?.selftext ?? "";
+    const url = event.post?.url ?? "";
+    const containsDomain = postContainsBannedDomain(postTitle, postText, url, domainList);
     // If a match was found, remove post and optionally comment on it.
     if (containsDomain) {
-      const postId = event.post?.id!;
+      const postId = event.post?.id! as PostId;
       // Check if setting to comment on removed posts is enabled.
       if (await context.settings.get("comment-on-posts"))
         await commentOnRemovedPost(postId, context); // If setting is enabled, leave a comment.
@@ -471,6 +494,18 @@ Devvit.addTrigger({
       const removeAsSpam = (await context.settings.get("remove-posts-as-spam")) as boolean;
       // Remove post and pass spam setting to removal method.
       await context.reddit.remove(postId, removeAsSpam);
+      // Optional: Notify mods via modmail about removed post.
+      const warnModmailSetting = (await context.settings.get("warn-modmail")) as boolean;
+      if (warnModmailSetting) {
+        await notifyModsForPostOutsideThread(event.post?.permalink!, authorName, context);
+      }
+      // Optional: Add mod note to user with reason for removal.
+      const modNoteSetting = (await context.settings.get("add-mod-note")) as boolean;
+      if (modNoteSetting) {
+        const noteText = `Post removed: outside designated thread.`;
+        const subredditName = context.subredditName!;
+        await context.reddit.addModNote({ subreddit: subredditName, user: authorName, note: noteText, redditId: postId, label: "SPAM_WARNING" });
+      }
     }
   },
 });
