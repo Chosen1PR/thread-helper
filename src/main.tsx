@@ -82,7 +82,7 @@ Devvit.addSettings([
       {
         type: "boolean",
         name: "remove-as-spam",
-        label: "Remove posts/comments outside thread as spam",
+        label: "Remove posts/comments outside thread as Spam",
         helpText:
           `If enabled, "Spam" will be the removal reason for removed posts and comments outside of the designated thread.`,
         defaultValue: false,
