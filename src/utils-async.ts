@@ -6,10 +6,11 @@ import {
     getKeyForComments,
     isValidKarmaSetting,
     isValidAccountAgeSetting,
+    isValidBanDuration,
     matchesRegex,
     textHasMatchInList,
 } from "./utils.js"
-import { CommentId } from "./types.js";
+import { CommentId, PostOrCommentId } from "./types.js";
 
 // Remove comments outside of megathread.
 export async function removeCommentOutsideThread(
@@ -20,7 +21,7 @@ export async function removeCommentOutsideThread(
   commentLink: string,
   context: TriggerContext
 ) {
-  const removeOutsideComments = await context.settings.get("remove-outside-comments") as boolean;
+  const removeOutsideComments = await context.settings.get("remove-posts") as boolean; // same as post setting
   if (removeOutsideComments) {
     // If the setting is enabled, check if the comment matches any of the domains.
     const domainList = (await context.settings.get("domain-list")) as string;
@@ -37,26 +38,26 @@ export async function removeCommentOutsideThread(
       }
       if (containsDomain) {
         // If the comment contains a whitelisted domain, remove it.
-        const removeAsSpam = (await context.settings.get("remove-posts-as-spam")) as boolean;
+        const removeAsSpam = (await context.settings.get("remove-as-spam")) as boolean;
         await context.reddit.remove(commentId, removeAsSpam);
+        const subredditName = context.subredditName!;
         // Optionally PM user about removal
-        const pmUserSetting = (await context.settings.get("pm-user")) as boolean;
-        if (pmUserSetting) {
-          const subredditName = context.subredditName!;
-          //const postLink = event.post?.permalink!;
-          //const commentLink = event.comment?.permalink!;
-          //const username = event.author?.name!;
+        if (await context.settings.get("pm-user")) {
           await pmUserOutsideThread(username, subredditName, commentLink, postLink, context);
         }
         // Optionally add mod note about removal
-        const modNoteSetting = (await context.settings.get("add-mod-note")) as boolean;
-        if (modNoteSetting) {
+        if (await context.settings.get("add-mod-note")) {
           const noteText = `Comment removed: outside designated thread`;
-          const subredditName = context.subredditName!;
           await context.reddit.addModNote({ subreddit: subredditName, user: username, note: noteText, redditId: commentId as CommentId, label: "SPAM_WARNING" });
         }
         // Optionally notify mods about removal via modmail
-        await notifyModsForCommentOutsideThread(commentLink, commentBody, username, postLink, context);
+        if (await context.settings.get("warn-modmail")) {
+          await notifyModsForCommentOutsideThread(commentLink, commentBody, username, postLink, context);
+        }
+        // Optionally ban user for removal
+        if (await context.settings.get("ban-user")) {
+          await banUserOutsideThread(username, commentId as CommentId, context);
+        }
       }
     }
   }
@@ -421,7 +422,7 @@ export async function pmUserOutsideThread(
 export async function commentOnRemovedPost(postId: string, context: TriggerContext) {
   const commentText =
     `Your post was removed because it contains a link from a domain that is restricted to an already existing thread.`
-    + `\n\nPlease ensure you only share links/codes in the designated thread to avoid further action.`;
+    + `\n\nPlease only share links/codes in the designated thread to avoid further action.`;
   const newComment = await context.reddit.submitComment({id: postId, text: commentText});
   await newComment.distinguish(true); // always distinguish as mod and pin comment
   await newComment.lock(); // always lock comment
@@ -472,8 +473,6 @@ export async function notifyModsForCommentOutsideThread(
 
 // Helper function to notify mods via modmail when a post is removed for being outside of the designated thread
 export async function notifyModsForPostOutsideThread(postLink: string, username: string, context: TriggerContext) {
-  const warnMods = (await context.settings.get("warn-modmail")) as boolean;
-  if (!warnMods) return; // If the setting is not enabled, do nothing.
   const subredditName = context.subredditName!;
   const subredditId = context.subredditId!;
   const subjectText = `Removed post outside of designated thread`;
@@ -487,5 +486,34 @@ export async function notifyModsForPostOutsideThread(postLink: string, username:
     });
   } catch (error) {
     console.log(`Error sending modmail about comment removal to r/${subredditName} mods: ${error}`);
+  }
+}
+
+// Helper function to ban a user who shares a referral link outside of the designated thread
+export async function banUserOutsideThread(username: string, postOrCommentId: PostOrCommentId, context: TriggerContext) {
+  const duration = (await context.settings.get("ban-days")) as number;
+  if (!isValidBanDuration(duration)) return; // If the ban duration setting is not valid, do nothing.
+  const subredditName = context.subredditName!;
+  try {
+    await context.reddit.banUser({
+      username: username,
+      subredditName: subredditName,
+      duration: duration,
+      reason: 'Referral outside designated thread',
+      message: `You have been banned for sharing a link/code outside of the designated thread. This is against [our rules](https://www.reddit.com/mod/${subredditName}/rules).`,
+      note: 'Referral outside designated thread',
+      context: postOrCommentId
+    });
+    var label = "BOT_BAN";
+    if (duration == 0) label = "PERMA_BAN";
+    await context.reddit.addModNote({
+      subreddit: subredditName,
+      user: username,
+      note: `Referral outside designated thread`,
+      redditId: postOrCommentId,
+      label: "BAN"
+    });
+  } catch (error) {
+    console.log(`Error banning user u/${username} in r/${subredditName}: ${error}`);
   }
 }

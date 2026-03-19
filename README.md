@@ -13,9 +13,10 @@ Do you have referral megathreads in your community for certain products or servi
 - Remove comments from outside the thread that contain a referral link.
 - Define regexes that comments must have or must not match.
 - Remove posts that contain referral links.
-- Optionally message users privately from the bot account (not modmail) when their comment is removed and explain why.
-- Optionally comment on posts that contain referral links.
-- Optionally receive modmail notifications when a post or comment outside of the designated thread is removed.
+- Message users privately from the bot account (not modmail) when their comment is removed and explain why.
+- Comment on posts that contain referral links.
+- Receive modmail notifications when a post or comment outside of the designated thread is removed.
+- Optionally ban users if they share a referral link outside of the designated thread.
 
 For even further automation with referral threads or other posts, feel free to check out some of my other apps!
 
@@ -26,6 +27,13 @@ For even further automation with referral threads or other posts, feel free to c
 ---
 
 ## Changelog
+
+### [0.1.15] (2026-03-19)
+
+#### Features
+
+- Added the ability to ban users automatically if they share a referral link outside of the designated thread.
+- There is now a unified setting to remove both posts and comments outside of the designated thread.
 
 ### [0.1.14] (2026-03-04)
 

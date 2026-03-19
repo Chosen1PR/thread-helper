@@ -20,7 +20,8 @@ import {
   pmUser,
   commentOnRemovedPost,
   userIsMod,
-  notifyModsForPostOutsideThread
+  notifyModsForPostOutsideThread,
+  banUserOutsideThread
 } from "./utils-async.js"
 
 import { CommentId, PostId } from "./types.js";
@@ -71,19 +72,19 @@ Devvit.addSettings([
       {
         type: "boolean",
         name: "remove-posts",
-        label: "Remove domain-matching posts",
+        label: "Remove domain-matching posts/comments outside thread",
         helpText:
-          "Remove posts outside of the thread that contain a link from one of the above domains.",
+          "Remove posts and comments outside of the thread that contain a link from one of the above domains.",
         defaultValue: false,
         scope: "installation",
       },
       // Config setting for marking removed posts as spam
       {
         type: "boolean",
-        name: "remove-posts-as-spam",
-        label: "Remove posts as spam",
+        name: "remove-as-spam",
+        label: "Remove posts/comments outside thread as spam",
         helpText:
-          `If enabled, "Spam" will be the removal reason for removed posts. Also affects comments outside of the designated thread.`,
+          `If enabled, "Spam" will be the removal reason for removed posts and comments outside of the designated thread.`,
         defaultValue: false,
         scope: "installation",
       },
@@ -214,16 +215,6 @@ Devvit.addSettings([
     type: "group",
     label: "Comment Content Requirements",
     fields: [
-      // Config setting for removing domain-matching comments outside of thread
-      {
-        type: "boolean",
-        name: "remove-outside-comments",
-        label: "Remove links outside of thread",
-        helpText:
-          "If enabled, comments outside of the thread (elsewhere in the subreddit) that contain one of the listed domains will be removed.",
-        defaultValue: false,
-        scope: "installation",
-      },
       // Config setting for requiring domain-matching comments
       {
         type: "boolean",
@@ -319,6 +310,26 @@ Devvit.addSettings([
         defaultValue: false,
         helpText:
           "Send a notification modmail to mods when a post or comment is removed outside of the designated thread.",
+        scope: "installation",
+      },
+      // Config setting for banning a user
+      {
+        type: "boolean",
+        name: "ban-user",
+        label: "Ban users after removal outside of thread",
+        defaultValue: false,
+        helpText:
+          "Ban users when their post or comment is removed outside of the designated thread. Only works if 'Remove domain-matching posts/comments outside thread' is enabled.",
+        scope: "installation",
+      },
+      // Config setting for ban duration
+      {
+        type: "number",
+        name: "ban-days",
+        label: "Ban duration (days)",
+        defaultValue: 0,
+        helpText:
+          "Duration of ban in days (1-999, whole numbers only). Set to 0 for permanent. This only applies if the ban setting above is enabled.",
         scope: "installation",
       }
     ]
@@ -483,7 +494,19 @@ Devvit.addTrigger({
     const postTitle = event.post?.title ?? "";
     const postText = event.post?.selftext ?? "";
     const url = event.post?.url ?? "";
-    const containsDomain = postContainsBannedDomain(postTitle, postText, url, domainList);
+    var containsDomain = postContainsBannedDomain(postTitle, postText, url, domainList);
+    if (!containsDomain) {
+      // If no positive match yet, check if the post is a crosspost.
+      const parentId = event.post?.crosspostParentId ?? "";
+      if (parentId != "") {
+        // If this is a crosspost, we need to check the parent post for links from the domain list as well.
+        const parentPost = await context.reddit.getPostById(parentId);
+        const parentTitle = parentPost.title ?? "";
+        const parentText = parentPost.body ?? "";
+        const parentUrl = parentPost.url ?? "";
+        containsDomain = postContainsBannedDomain(parentTitle, parentText, parentUrl, domainList);
+      };
+    }
     // If a match was found, remove post and optionally comment on it.
     if (containsDomain) {
       const postId = event.post?.id! as PostId;
@@ -491,20 +514,22 @@ Devvit.addTrigger({
       if (await context.settings.get("comment-on-posts"))
         await commentOnRemovedPost(postId, context); // If setting is enabled, leave a comment.
       // Check if setting to remove as spam is enabled.
-      const removeAsSpam = (await context.settings.get("remove-posts-as-spam")) as boolean;
+      const removeAsSpam = (await context.settings.get("remove-as-spam")) as boolean;
       // Remove post and pass spam setting to removal method.
       await context.reddit.remove(postId, removeAsSpam);
       // Optional: Notify mods via modmail about removed post.
-      const warnModmailSetting = (await context.settings.get("warn-modmail")) as boolean;
-      if (warnModmailSetting) {
+      if (await context.settings.get("warn-modmail")) {
         await notifyModsForPostOutsideThread(event.post?.permalink!, authorName, context);
       }
       // Optional: Add mod note to user with reason for removal.
-      const modNoteSetting = (await context.settings.get("add-mod-note")) as boolean;
-      if (modNoteSetting) {
+      if (await context.settings.get("add-mod-note")) {
         const noteText = `Post removed: outside designated thread.`;
         const subredditName = context.subredditName!;
         await context.reddit.addModNote({ subreddit: subredditName, user: authorName, note: noteText, redditId: postId, label: "SPAM_WARNING" });
+      }
+      // Optional: Ban user if setting is enabled.
+      if (await context.settings.get("ban-user")) {
+        await banUserOutsideThread(authorName, postId, context);
       }
     }
   },

@@ -91,7 +91,8 @@ export function isValidKarmaSetting(
   return (
     karmaSetting != undefined &&
     !Number.isNaN(karmaSetting) &&
-    Number(karmaSetting) != 0
+    Number(karmaSetting) != 0 &&
+    Number(karmaSetting) % 1 === 0 // integer check
   );
 }
 
@@ -102,7 +103,21 @@ export function isValidAccountAgeSetting(
   return (
     accountAgeSetting != undefined &&
     !Number.isNaN(accountAgeSetting) &&
-    Number(accountAgeSetting) > 0
+    Number(accountAgeSetting) > 0 &&
+    Number(accountAgeSetting) % 1 === 0 // integer check
+  );
+}
+
+// Helper function to validate ban duration in days
+export function isValidBanDuration(
+  banDuration: string | number | boolean | string[] | undefined
+) {
+  return (
+    banDuration != undefined &&
+    !Number.isNaN(banDuration) &&
+    Number(banDuration) >= 0 &&
+    Number(banDuration) <= 999 &&
+    Number(banDuration) % 1 === 0 // integer check
   );
 }
 
