@@ -102,7 +102,7 @@ Devvit.addSettings([
   },
   {
     type: "group",
-    label: "Duplicate Comments",
+    label: "Duplicate and Child Comments",
     fields: [
       // Config setting for removing duplicate comments
       {
@@ -118,22 +118,22 @@ Devvit.addSettings([
       {
         type: "boolean",
         name: "update-comment-delete",
-        label: "Update with comment deletes",
+        label: "Update comment count with deletes",
         defaultValue: true,
         helpText:
-          "Update a user's comment count in a thread when they delete their comment(s). Turn this off if you think users will abuse this and spend their time deleting and making comments over and over again.",
+          "Update a user's comment count in a thread when they delete their comment(s). Disable this if you think users will abuse it and delete/create comments over and over again.",
         scope: "installation",
       },
+      // Config setting for removing comment replies
+      {
+        type: "boolean",
+        name: "remove-replies",
+        label: "Allow top-level comments only",
+        helpText: "Lock top-level comments in a thread and remove replies on any unlocked comments.",
+        defaultValue: false,
+        scope: "installation",
+      }   
     ],
-  },
-  // Config setting for removing comment replies
-  {
-    type: "boolean",
-    name: "remove-replies",
-    label: "Allow top-level comments only",
-    helpText: "Lock top-level comments in thread and remove replies on any unlocked comments.",
-    defaultValue: false,
-    scope: "installation",
   },
   {
     type: "group",
@@ -327,7 +327,7 @@ Devvit.addSettings([
         type: "number",
         name: "ban-days",
         label: "Ban duration (days)",
-        defaultValue: 0,
+        defaultValue: 1,
         helpText:
           "Duration of ban in days (1-999, whole numbers only). Set to 0 for permanent. This only applies if the ban setting above is enabled.",
         scope: "installation",
