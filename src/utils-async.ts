@@ -500,7 +500,7 @@ export async function banUserOutsideThread(username: string, postOrCommentId: Po
       subredditName: subredditName,
       duration: duration,
       reason: 'Referral outside designated thread',
-      message: `You have been banned for sharing a link/code outside of the designated thread. This is against [our rules](https://www.reddit.com/mod/${subredditName}/rules).`,
+      message: `You have been banned for sharing a link/code where you are not allowed to. This is against [our rules](https://www.reddit.com/mod/${subredditName}/rules).`,
       note: 'Referral outside designated thread',
       context: postOrCommentId
     });

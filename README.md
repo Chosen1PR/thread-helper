@@ -28,6 +28,10 @@ For even further automation with referral threads or other posts, feel free to c
 
 ## Changelog
 
+### [0.1.17] (2026-04-17)
+
+- Minor change to ban message wording.
+
 ### [0.1.16] (2026-03-19)
 
 #### Features
