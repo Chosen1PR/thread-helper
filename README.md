@@ -22,11 +22,19 @@ For even further automation with referral threads or other posts, feel free to c
 
 - [**Pinned Post Archiver**](https://developers.reddit.com/apps/sticky-archiver) locks pinned posts (such as megathreads) automatically when they are unpinned from the Community Highlights section. Configurable by post flair or title.
 - [**Diverse Comments**](https://developers.reddit.com/apps/diverse-comments) allows more comment removal versatility, with a customizable limit on an individual user's comments per post, or a customizable limit on how long comment reply chains can get. Configurable by post flair.
-- [**Lock Removed Posts**](https://developers.reddit.com/apps/diverse-comments) locks posts automatically once they are removed by a mod or deleted by the OP. Optionally, it can also remove all comments from spam posts.
+- [**Lock Removed Posts**](https://developers.reddit.com/apps/removed-posts) locks posts automatically once they are removed by a mod or deleted by the OP. Optionally, it can also remove all comments from spam posts.
 
 ---
 
 ## Changelog
+
+### [0.1.18] (2026-05-18)
+
+#### Features
+
+- App icon now appears as app account's avatar.
+- Updated description on app profile page.
+- Updated Devvit CLI to 0.12.24.
 
 ### [0.1.17] (2026-04-17)
 
