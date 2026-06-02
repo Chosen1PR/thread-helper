@@ -2,8 +2,11 @@ import {
   TriggerContext,
 } from "@devvit/public-api";
 
+import {getExtendedDevvit} from "./protos.js";
+
 import {
-    getKeyForComments,
+    getKeyForCommentCount,
+    getKeyForCommentSeenState,
     isValidKarmaSetting,
     isValidAccountAgeSetting,
     isValidBanDuration,
@@ -72,9 +75,13 @@ export async function removeDuplicateComment(
   userIsExempt: boolean,
   context: TriggerContext
 ) {
+  const seenState = await getCommentSeenState(commentId, context);
+  if (seenState == 'seen' || seenState == 'error') {
+    return false; // not removed
+  }
   var commentRemoved = false;
   // Step 1: Get user's comment count in post.
-  const key = getKeyForComments(postId); //key is comments:<postId>, field is userId
+  const key = getKeyForCommentCount(postId, userId); //key is <postId>:<userId>, field is commentCount
   const commentCount = await getAuthorsCommentCountInPost(key, userId, postId, context);
   // Step 2: If user is over limit, remove comment.
   if (commentCount >= 1 && !userIsExempt) {
@@ -83,9 +90,9 @@ export async function removeDuplicateComment(
     commentRemoved = true;
   }
   // Step 3: Increment user's comment count in post.
-  await context.redis.hIncrBy(key, userId, 1);
+  await context.redis.hIncrBy(key, 'commentCount', 1);
   // Even if this comment was removed in Step 2, any new comments will still increment the comment count for this user.
-  // For the count to be decremented, the user must delete their comment and "update with comment deletes" must be enabled.
+  // For the count to be decremented, the user must delete their own comment and "update with comment deletes" must be enabled.
   return commentRemoved;
 }
 
@@ -319,22 +326,7 @@ export async function isPostFlairApplicable(flairText: string, context: TriggerC
   return (flairText != "" && flairList != "" && textHasMatchInList(flairText, flairList));
 }
 
-// Helper function for getting user's comment count
-export async function getAuthorsCommentCountInPost(
-  key: string,
-  userId: string,
-  postId: string,
-  context: TriggerContext
-) {
-  var countString = (await context.redis.hGet(key, userId)) ?? "";
-  if (countString == "") {
-    // User hasn't commented here before. Adding redis hash with comment count of 0.
-    countString = "0";
-    await context.redis.hSet(key, { userId: countString });
-  }
-  const commentCount = Number(countString);
-  return commentCount;
-}
+
 
 // Helper function to PM a user when their comment is removed
 export async function pmUser(
@@ -385,7 +377,7 @@ export async function pmUser(
 }
 
 // Helper function to PM users who comment disallowed links outside of the designated megathread
-export async function pmUserOutsideThread(
+async function pmUserOutsideThread(
   username: string,
   subredditName: string,
   commentLink: string,
@@ -421,8 +413,7 @@ export async function pmUserOutsideThread(
 // Helper function to comment on removed posts
 export async function commentOnRemovedPost(postId: string, context: TriggerContext) {
   const commentText =
-    `Your post was removed because it contains a link from a domain that is restricted to an already existing thread.`
-    + `\n\nPlease only share links/codes in the designated thread to avoid further action.`;
+    `Your post was removed it contains a link from a domain that we don't allow in posts.`;
   const newComment = await context.reddit.submitComment({id: postId, text: commentText});
   await newComment.distinguish(true); // always distinguish as mod and pin comment
   await newComment.lock(); // always lock comment
@@ -445,7 +436,7 @@ export async function userIsMod(username: string, context: TriggerContext) {
 }
 
 // Helper function to notify mods via modmail when a comment is removed for being outside of the designated thread
-export async function notifyModsForCommentOutsideThread(
+async function notifyModsForCommentOutsideThread(
   commentLink: string,
   commentBody: string,
   username: string,
@@ -515,5 +506,48 @@ export async function banUserOutsideThread(username: string, postOrCommentId: Po
     });
   } catch (error) {
     console.log(`Error banning user u/${username} in r/${subredditName}: ${error}`);
+  }
+}
+
+// Helper function for getting user's comment count
+async function getAuthorsCommentCountInPost(
+  key: string,
+  userId: string,
+  postId: string,
+  context: TriggerContext
+) {
+  var countString = (await context.redis.hGet(key, 'commentCount')) ?? "";
+  if (countString == "") {
+    // User hasn't commented here before. Adding redis hash with comment count of 0.
+    countString = "0";
+    await context.redis.hSet(key, { commentCount: countString });
+  }
+  const commentCount = Number(countString);
+  return commentCount;
+}
+
+// Helper function to get a comment's "seen" state.
+// 'new' means a comment has never been seen before.
+// 'seen' means this app has already processed this comment before.
+// 'error' indicates a likely redis failure.
+async function getCommentSeenState(commentId: string, context: TriggerContext): Promise<'new' | 'seen' | 'error'> {
+  try {
+    const key = getKeyForCommentSeenState(commentId);
+    const result = await context.redis.hSetNX(key, 'seen', '1');
+    if (result == 1) return 'new'; // new comment, successfully marked as seen
+    else return 'seen'; // old comment, already seen
+  } catch {
+    return 'error'; // redis failure
+  }
+}
+
+// Test of filtering comments based on function in Protos
+export async function testFilterComment(commentId: CommentId, reason: string, keep: boolean, context: TriggerContext) {
+  try {
+    const ExtDevvit = getExtendedDevvit();
+    await ExtDevvit.redditAPIPlugins.Moderation.Filter({ id: commentId, keep: keep, reason: reason, }, context.metadata);
+  }
+  catch (error) {
+    console.log(`Could not filter comment:\n${error}`);
   }
 }

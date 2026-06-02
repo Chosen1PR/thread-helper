@@ -1,21 +1,11 @@
-// Helper function to get key for redis hash that handles comments on posts
-export function getKeyForComments(postId: string) {
-  return `comments:${postId}`;
-}
-
-// Alternative helper function for redis key-value pair that handles comments on posts
-export function getKeyForComments2(postId: string, userId: string) {
+// Helper function to get key for redis hash that handles comments on a specific post by a specific user
+export function getKeyForCommentCount(postId: string, userId: string) {
   return `${postId}:${userId}`;
 }
 
-// Helper function for redis key-value pair that handles manual post diversification
-export function getKeyForDiversifyPosts(postId: string) {
-  return `diversify:${postId}`;
-}
-
-// Helper function for redis key-value pair that handles manual post pruning
-export function getKeyForPrunePosts(postId: string) {
-  return `prune:${postId}`;
+// Helper function to get key for redis hash that handles a comment's "seen" state
+export function getKeyForCommentSeenState(commentId: string) {
+  return commentId;
 }
 
 // Helper function that tells you if the current comment limit in the config settings is even valid

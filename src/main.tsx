@@ -4,7 +4,7 @@ import {
 } from "@devvit/public-api";
 
 import {
-  getKeyForComments,
+  getKeyForCommentCount,
   getReasonScope,
   getReasonForRemoval,
   postContainsBannedDomain,
@@ -390,7 +390,7 @@ Devvit.addTrigger({
     const postId = event.post?.id!;
     const commentId = event.comment?.id!;
     const postFlair = event.post?.linkFlair?.text ?? "";
-    // If everything looks good, this is where we remove duplicate comments and comment replies.
+    // If everything looks good, this is where we remove duplicate comments and replies to comments.
     if (event.type == "CommentCreate") {
       const removeDuplicates = await context.settings.get("remove-duplicates") as boolean; //check if removing duplicates enabled
       if (removeDuplicates) {
@@ -459,17 +459,17 @@ Devvit.addTrigger({
     // If we got here, then "remove duplicates" is enabled and "update with comment deletes" is enabled.
     const userId = event.author?.id!;
     const postId = event.postId!;
-    const key = getKeyForComments(postId); //key is comments:<postId>
-    const countString = (await context.redis.hGet(key, userId)) ?? ""; // Look up user's comment count in this post
+    const key = getKeyForCommentCount(postId, userId); //key is comments:<postId>
+    const countString = (await context.redis.hGet(key, 'commentCount')) ?? ""; // Look up user's comment count in this post
     if (countString != "") {
       // If user has a comment count in this post, update it.
       const commentCount = Number(countString);
       if (commentCount == 1)
         // If this was the last comment, delete the redis hash for this user.
-        await context.redis.hDel(key, [userId]);
+        await context.redis.del(key);
       else if (commentCount > 1)
         // If there are more comments, just decrement the count by 1.
-        await context.redis.hIncrBy(key, userId, -1);
+        await context.redis.hIncrBy(key, 'commentCount', -1);
     }
   },
 });
