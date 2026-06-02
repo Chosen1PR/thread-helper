@@ -14,6 +14,7 @@ import {
   removeCommentOutsideThread,
   removeDuplicateComment,
   lockTopLevelCommentOrRemoveReply,
+  updateCommentCountOnDelete,
   removeCommentAccordingToUserRequirements,
   removeCommentAccordingToContentRequirements,
   isPostFlairApplicable,
@@ -459,18 +460,8 @@ Devvit.addTrigger({
     // If we got here, then "remove duplicates" is enabled and "update with comment deletes" is enabled.
     const userId = event.author?.id!;
     const postId = event.postId!;
-    const key = getKeyForCommentCount(postId, userId); //key is comments:<postId>
-    const countString = (await context.redis.hGet(key, 'commentCount')) ?? ""; // Look up user's comment count in this post
-    if (countString != "") {
-      // If user has a comment count in this post, update it.
-      const commentCount = Number(countString);
-      if (commentCount == 1)
-        // If this was the last comment, delete the redis hash for this user.
-        await context.redis.del(key);
-      else if (commentCount > 1)
-        // If there are more comments, just decrement the count by 1.
-        await context.redis.hIncrBy(key, 'commentCount', -1);
-    }
+    const commentId = event.commentId!;
+    await updateCommentCountOnDelete(commentId, postId, userId, context);
   },
 });
 

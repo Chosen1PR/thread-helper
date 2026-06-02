@@ -15,6 +15,8 @@ import {
 } from "./utils.js"
 import { CommentId, PostOrCommentId } from "./types.js";
 
+/////////////////////////////////////////////////// GENERAL HELPER FUNCTIONS ///////////////////////////////////////////////////
+
 // Remove comments outside of megathread.
 export async function removeCommentOutsideThread(
   commentId: string,
@@ -75,14 +77,13 @@ export async function removeDuplicateComment(
   userIsExempt: boolean,
   context: TriggerContext
 ) {
-  const seenState = await getCommentSeenState(commentId, context);
+  const seenState = await getSeenStateForCommentCreate(commentId, context);
   if (seenState == 'seen' || seenState == 'error') {
     return false; // not removed
   }
   var commentRemoved = false;
   // Step 1: Get user's comment count in post.
-  const key = getKeyForCommentCount(postId, userId); //key is <postId>:<userId>, field is commentCount
-  const commentCount = await getAuthorsCommentCountInPost(key, userId, postId, context);
+  const commentCount = await getAuthorsCommentCount(userId, postId, context);
   // Step 2: If user is over limit, remove comment.
   if (commentCount >= 1 && !userIsExempt) {
     // Mod check here will depend on the "mods exempt" config setting.
@@ -90,10 +91,26 @@ export async function removeDuplicateComment(
     commentRemoved = true;
   }
   // Step 3: Increment user's comment count in post.
-  await context.redis.hIncrBy(key, 'commentCount', 1);
+  await updateAuthorsCommentCount(userId, postId, 1, context);
   // Even if this comment was removed in Step 2, any new comments will still increment the comment count for this user.
   // For the count to be decremented, the user must delete their own comment and "update with comment deletes" must be enabled.
   return commentRemoved;
+}
+
+export async function updateCommentCountOnDelete(commentId: string, postId: string, userId: string, context: TriggerContext) {
+  const commentCount = (await getAuthorsCommentCount(userId, postId, context)) ?? "";
+  if (commentCount > 0) {
+    // If user has a comment count in this post, then check if we have seen this deletion event before.
+    const seenState = await getSeenStateForCommentDelete(commentId, context);
+    if (seenState == 'seen' || seenState == 'error') return; // If this deletion event has already been processed, do nothing.
+    // If this is a new deletion event, update the comment count.
+    if (commentCount == 1)
+      // If this was the last comment, delete the redis hash for this user.
+      await deleteAuthorsCommentCount(userId, postId, context);
+    else if (commentCount > 1)
+      // If there are more comments, just decrement the count by 1.
+      await updateAuthorsCommentCount(userId, postId, -1, context);
+  }
 }
 
 // Allow top-level comments only by locking top-level comment or removing a comment that is a reply to another comment.
@@ -509,37 +526,89 @@ export async function banUserOutsideThread(username: string, postOrCommentId: Po
   }
 }
 
-// Helper function for getting user's comment count
-async function getAuthorsCommentCountInPost(
-  key: string,
+///////////////////////////////////////////////////////// REDIS FUNCTIONS /////////////////////////////////////////////////////////
+
+// Helper function for getting user's comment count in a post.
+async function getAuthorsCommentCount(
   userId: string,
   postId: string,
   context: TriggerContext
 ) {
-  var countString = (await context.redis.hGet(key, 'commentCount')) ?? "";
-  if (countString == "") {
-    // User hasn't commented here before. Adding redis hash with comment count of 0.
-    countString = "0";
-    await context.redis.hSet(key, { commentCount: countString });
+  try {
+    const key = getKeyForCommentCount(postId, userId);
+    var countString = (await context.redis.hGet(key, userId)) ?? "";
+    if (countString == "") {
+      // User hasn't commented here before. Adding redis hash with comment count of 0.
+      countString = "0";
+      await context.redis.hSet(key, { [userId]: countString });
+    }
+    const commentCount = Number(countString);
+    return commentCount;
   }
-  const commentCount = Number(countString);
-  return commentCount;
+  catch { return 0; }
 }
 
-// Helper function to get a comment's "seen" state.
+// Helper function for deleting a user's comment count in a post.
+// Useful if the comment count has reached 0.
+async function deleteAuthorsCommentCount(
+  userId: string,
+  postId: string,
+  context: TriggerContext
+) {
+  try {
+    const key = getKeyForCommentCount(postId, userId);
+    await context.redis.hDel(key, [userId]);
+  }
+  catch {} // do nothing
+}
+
+// Helper function for updating a user's comment count in a post.
+async function updateAuthorsCommentCount(
+  userId: string,
+  postId: string,
+  increment: number,
+  context: TriggerContext
+) {
+  try {
+    const key = getKeyForCommentCount(postId, userId);
+    await context.redis.hIncrBy(key, userId, increment);
+  }
+  catch {} // do nothing
+}
+
+// Helper function to get a comment creation event's "seen" state.
 // 'new' means a comment has never been seen before.
 // 'seen' means this app has already processed this comment before.
 // 'error' indicates a likely redis failure.
-async function getCommentSeenState(commentId: string, context: TriggerContext): Promise<'new' | 'seen' | 'error'> {
+async function getSeenStateForCommentCreate(commentId: string, context: TriggerContext): Promise<'new' | 'seen' | 'error'> {
   try {
     const key = getKeyForCommentSeenState(commentId);
-    const result = await context.redis.hSetNX(key, 'seen', '1');
+    const result = await context.redis.hSetNX(key, 'creationSeen', '1');
     if (result == 1) return 'new'; // new comment, successfully marked as seen
     else return 'seen'; // old comment, already seen
-  } catch {
+  }
+  catch {
     return 'error'; // redis failure
   }
 }
+
+// Helper function to get a comment deletion event's "seen" state.
+// 'new' means a comment has never been seen before.
+// 'seen' means this app has already processed this comment before.
+// 'error' indicates a likely redis failure.
+async function getSeenStateForCommentDelete(commentId: string, context: TriggerContext): Promise<'new' | 'seen' | 'error'> {
+  try {
+    const key = getKeyForCommentSeenState(commentId);
+    const result = await context.redis.hSetNX(key, 'deletionSeen', '1');
+    if (result == 1) return 'new'; // new comment deletion event, successfully marked as seen
+    else return 'seen'; // old comment deletion event, already seen
+  }
+  catch {
+    return 'error'; // redis failure
+  }
+}
+
+////////////////////////////////////////////////////// EXPERIMENTAL FUNCTIONS //////////////////////////////////////////////////////
 
 // Test of filtering comments based on function in Protos
 export async function testFilterComment(commentId: CommentId, reason: string, keep: boolean, context: TriggerContext) {

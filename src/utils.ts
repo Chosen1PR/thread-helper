@@ -1,6 +1,6 @@
 // Helper function to get key for redis hash that handles comments on a specific post by a specific user
-export function getKeyForCommentCount(postId: string, userId: string) {
-  return `${postId}:${userId}`;
+export function getKeyForCommentCount(postId: string, userId?: string) {
+  return `commentCount:${postId}`;
 }
 
 // Helper function to get key for redis hash that handles a comment's "seen" state
