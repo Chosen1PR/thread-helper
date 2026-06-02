@@ -10,12 +10,82 @@ import {
     isValidKarmaSetting,
     isValidAccountAgeSetting,
     isValidBanDuration,
+    postContainsBannedDomain,
     matchesRegex,
     textHasMatchInList,
+    getReasonForRemoval,
+    getReasonScope
 } from "./utils.js"
-import { CommentId, PostOrCommentId } from "./types.js";
+import { CommentId, PostOrCommentId, PostId } from "./types.js";
 
 /////////////////////////////////////////////////// GENERAL HELPER FUNCTIONS ///////////////////////////////////////////////////
+
+export async function removeCommentInsideThread(
+  commentId: string,
+  commentBody: string,
+  commentLink: string,
+  postId: string,
+  postFlair: string,
+  postLink: string,
+  userId: string,
+  username: string,
+  userKarma: number,
+  userFlair: string | undefined,
+  eventType: string,
+  context: TriggerContext
+)  {
+  // Get comment author info and check if they are a mod
+  const authorIsMod = await isUserMod(username, context);
+  const modsExempt = (await context.settings.get("mods-exempt")) as boolean;
+  const userIsExempt = authorIsMod && modsExempt;
+  var commentRemoved = false;
+  var commentRemovedReason = ""; // needed if PM is sent to user
+      
+  // If everything looks good, this is where we remove duplicate comments and replies to comments.
+  if (eventType == "CommentCreate") {
+    const removeDuplicates = await context.settings.get("remove-duplicates") as boolean; //check if removing duplicates enabled
+    if (removeDuplicates) {
+      commentRemoved = await removeDuplicateComment(userId, postId, commentId, userIsExempt, context);
+      if (commentRemoved) commentRemovedReason = "duplicate";
+    }
+    // If comment not removed yet, remove replies according to setting.
+    if (!commentRemoved) {
+      const removeReplies = await context.settings.get("remove-replies") as boolean; //check if removing replies enabled
+      if (removeReplies) {
+        commentRemoved = await lockTopLevelCommentOrRemoveReply(commentId, userIsExempt, context);
+        if (commentRemoved) commentRemovedReason = "reply";
+      }
+    }
+  }
+  // If comment not removed yet, check user requirements.
+  if (!commentRemoved && !userIsExempt) {     
+    commentRemovedReason = await removeCommentAccordingToUserRequirements(commentId, userId, userFlair, userKarma, context);
+    commentRemoved = (commentRemovedReason != "");
+  }
+  // If comment still not removed, check comment content.
+  if (!commentRemoved && !userIsExempt) {
+    commentRemovedReason = await removeCommentAccordingToContentRequirements(commentId, commentBody, context);
+    commentRemoved = (commentRemovedReason != "");
+  }
+  // If comment was removed and PM setting is enabled, send PM to user.
+  if (commentRemoved) {
+    // Optional: inform user via PM that their comment was removed and give a reason why.
+    const pmUserSetting = (await context.settings.get("pm-user")) as boolean;
+    if (pmUserSetting) {
+      const subredditName = context.subredditName!;    
+      var reason = getReasonForRemoval(commentRemovedReason, subredditName);
+      reason += getReasonScope(postFlair);
+      pmUser(username, commentLink, postLink, reason, context);
+    }
+    // Optional: add mod note to user with reason for removal.
+    const modNoteSetting = (await context.settings.get("add-mod-note")) as boolean;
+    if (modNoteSetting) {
+      const noteText = `Comment removed: ${commentRemovedReason}. Post flair: ${postFlair}.`;
+      const subredditName = context.subredditName!;
+      await context.reddit.addModNote({ subreddit: subredditName, user: username, note: noteText, redditId: commentId as CommentId });
+    }
+  }
+}
 
 // Remove comments outside of megathread.
 export async function removeCommentOutsideThread(
@@ -68,9 +138,63 @@ export async function removeCommentOutsideThread(
   }
 }
 
+export async function removePostOutsideThread(
+  postId: string,
+  postTitle: string,
+  postBody: string,
+  postUrl: string,
+  postPermalink: string,
+  authorName: string,
+  parentId: string,
+  context: TriggerContext
+) {
+  // Check if author is a mod and mods are exempt
+  const modsExempt = (await context.settings.get("mods-exempt")) as boolean;
+  const authorIsMod = await isUserMod(authorName, context);
+  if (authorIsMod && modsExempt) return; // If author is a mod and mods are exempt, don't do anything.
+  // Check post content for link from domain list
+  const domainList = (await context.settings.get("domain-list")) as string;
+  var containsDomain = postContainsBannedDomain(postTitle, postBody, postUrl, domainList);
+  if (!containsDomain) {
+    // If no positive match yet, check if the post is a crosspost.
+    if (parentId != "") {
+      // If this is a crosspost, we need to check the parent post for links from the domain list as well.
+      const parentPost = await context.reddit.getPostById(parentId);
+      const parentTitle = parentPost.title ?? "";
+      const parentText = parentPost.body ?? "";
+      const parentUrl = parentPost.url ?? "";
+      containsDomain = postContainsBannedDomain(parentTitle, parentText, parentUrl, domainList);
+    };
+  }
+  // If a match was found, remove post and optionally comment on it.
+  if (containsDomain) {
+    // Check if setting to comment on removed posts is enabled.
+    if (await context.settings.get("comment-on-posts"))
+      await commentOnRemovedPost(postId, context); // If setting is enabled, leave a comment.
+    // Check if setting to remove as spam is enabled.
+    const removeAsSpam = (await context.settings.get("remove-as-spam")) as boolean;
+    // Remove post and pass spam setting to removal method.
+    await context.reddit.remove(postId, removeAsSpam);
+    // Optional: Notify mods via modmail about removed post.
+    if (await context.settings.get("warn-modmail")) {
+      await notifyModsForPostOutsideThread(postPermalink, authorName, context);
+    }
+    // Optional: Add mod note to user with reason for removal.
+    if (await context.settings.get("add-mod-note")) {
+      const noteText = `Post removed: outside designated thread.`;
+      const subredditName = context.subredditName!;
+      await context.reddit.addModNote({ subreddit: subredditName, user: authorName, note: noteText, redditId: postId as PostId, label: "SPAM_WARNING" });
+    }
+    // Optional: Ban user if setting is enabled.
+    if (await context.settings.get("ban-user")) {
+      await banUserOutsideThread(authorName, postId as PostId, context);
+    }
+  }
+}
+
 // Remove duplicate comments in a single thread.
 // Returns true if comment was removed, false otherwise.
-export async function removeDuplicateComment(
+async function removeDuplicateComment(
   userId: string,
   postId: string,
   commentId: string,
@@ -82,8 +206,12 @@ export async function removeDuplicateComment(
     return false; // not removed
   }
   var commentRemoved = false;
-  // Step 1: Get user's comment count in post.
-  const commentCount = await getAuthorsCommentCount(userId, postId, context);
+  // Step 1: Get user's comment count in post. Set to 0 if the function returns a negative number.
+  var commentCount = await getAuthorsCommentCount(userId, postId, context);
+  if (commentCount < 0) {
+    commentCount = 0;
+    await resetAuthorsCommentCount(userId, postId, context);
+  }
   // Step 2: If user is over limit, remove comment.
   if (commentCount >= 1 && !userIsExempt) {
     // Mod check here will depend on the "mods exempt" config setting.
@@ -98,7 +226,9 @@ export async function removeDuplicateComment(
 }
 
 export async function updateCommentCountOnDelete(commentId: string, postId: string, userId: string, context: TriggerContext) {
-  const commentCount = (await getAuthorsCommentCount(userId, postId, context)) ?? "";
+  var commentCount = (await getAuthorsCommentCount(userId, postId, context)) ?? 0;
+  if (commentCount < 0)
+    commentCount = 0;
   if (commentCount > 0) {
     // If user has a comment count in this post, then check if we have seen this deletion event before.
     const seenState = await getSeenStateForCommentDelete(commentId, context);
@@ -115,7 +245,7 @@ export async function updateCommentCountOnDelete(commentId: string, postId: stri
 
 // Allow top-level comments only by locking top-level comment or removing a comment that is a reply to another comment.
 // Returns true if comment was removed, false otherwise.
-export async function lockTopLevelCommentOrRemoveReply(
+async function lockTopLevelCommentOrRemoveReply(
   commentId: string,
   userIsExempt: boolean,
   context: TriggerContext
@@ -134,7 +264,7 @@ export async function lockTopLevelCommentOrRemoveReply(
 
 // Checks user requirements and removes comments accordingly.
 // Returns a reason codeword for comment removal, or an empty string if the comment was not removed.
-export async function removeCommentAccordingToUserRequirements(
+async function removeCommentAccordingToUserRequirements(
   commentId: string,
   userId: string,
   userFlair: any,
@@ -244,7 +374,7 @@ export async function removeCommentAccordingToUserRequirements(
 
 // Remove comments according to content requirements.
 // Returns a reason codeword for comment removal, or an empty string if the comment was not removed.
-export async function removeCommentAccordingToContentRequirements(
+async function removeCommentAccordingToContentRequirements(
   commentId: string,
   commentBody: string,
   context: TriggerContext
@@ -346,7 +476,7 @@ export async function isPostFlairApplicable(flairText: string, context: TriggerC
 
 
 // Helper function to PM a user when their comment is removed
-export async function pmUser(
+async function pmUser(
   username: string,
   commentLink: string,
   postLink: string,
@@ -428,7 +558,7 @@ async function pmUserOutsideThread(
 }
 
 // Helper function to comment on removed posts
-export async function commentOnRemovedPost(postId: string, context: TriggerContext) {
+async function commentOnRemovedPost(postId: string, context: TriggerContext) {
   const commentText =
     `Your post was removed it contains a link from a domain that we don't allow in posts.`;
   const newComment = await context.reddit.submitComment({id: postId, text: commentText});
@@ -437,7 +567,7 @@ export async function commentOnRemovedPost(postId: string, context: TriggerConte
 }
 
 // Helper function for determining if comment author is a moderator
-export async function userIsMod(username: string, context: TriggerContext) {
+async function isUserMod(username: string, context: TriggerContext) {
   // If user not found, return false.
   if (username == undefined || username == null ||  username == "") return false;
   const subredditName = context.subredditName!;
@@ -480,7 +610,7 @@ async function notifyModsForCommentOutsideThread(
 }
 
 // Helper function to notify mods via modmail when a post is removed for being outside of the designated thread
-export async function notifyModsForPostOutsideThread(postLink: string, username: string, context: TriggerContext) {
+async function notifyModsForPostOutsideThread(postLink: string, username: string, context: TriggerContext) {
   const subredditName = context.subredditName!;
   const subredditId = context.subredditId!;
   const subjectText = `Removed post outside of designated thread`;
@@ -498,7 +628,7 @@ export async function notifyModsForPostOutsideThread(postLink: string, username:
 }
 
 // Helper function to ban a user who shares a referral link outside of the designated thread
-export async function banUserOutsideThread(username: string, postOrCommentId: PostOrCommentId, context: TriggerContext) {
+async function banUserOutsideThread(username: string, postOrCommentId: PostOrCommentId, context: TriggerContext) {
   const duration = (await context.settings.get("ban-days")) as number;
   if (!isValidBanDuration(duration)) return; // If the ban duration setting is not valid, do nothing.
   const subredditName = context.subredditName!;
@@ -529,6 +659,8 @@ export async function banUserOutsideThread(username: string, postOrCommentId: Po
 ///////////////////////////////////////////////////////// REDIS FUNCTIONS /////////////////////////////////////////////////////////
 
 // Helper function for getting user's comment count in a post.
+// Returns 0 if there are no comments but there *is* a Redis object.
+// Returns -1 if there is not Redis object.
 async function getAuthorsCommentCount(
   userId: string,
   postId: string,
@@ -537,15 +669,23 @@ async function getAuthorsCommentCount(
   try {
     const key = getKeyForCommentCount(postId, userId);
     var countString = (await context.redis.hGet(key, userId)) ?? "";
-    if (countString == "") {
-      // User hasn't commented here before. Adding redis hash with comment count of 0.
-      countString = "0";
-      await context.redis.hSet(key, { [userId]: countString });
-    }
+    if (countString == "") return -1;
     const commentCount = Number(countString);
     return commentCount;
   }
   catch { return 0; }
+}
+
+async function resetAuthorsCommentCount(
+  userId: string,
+  postId: string,
+  context: TriggerContext
+) {
+  try {
+    const key = getKeyForCommentCount(postId, userId);
+    await context.redis.hSet(key, { [userId]: "0" });
+  }
+  catch {} // do nothing
 }
 
 // Helper function for deleting a user's comment count in a post.

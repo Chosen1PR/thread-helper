@@ -4,28 +4,15 @@ import {
 } from "@devvit/public-api";
 
 import {
-  getKeyForCommentCount,
-  getReasonScope,
-  getReasonForRemoval,
-  postContainsBannedDomain,
-} from "./utils.js"
-
-import {
+  removeCommentInsideThread,
   removeCommentOutsideThread,
-  removeDuplicateComment,
-  lockTopLevelCommentOrRemoveReply,
+  removePostOutsideThread,
   updateCommentCountOnDelete,
-  removeCommentAccordingToUserRequirements,
-  removeCommentAccordingToContentRequirements,
   isPostFlairApplicable,
-  pmUser,
-  commentOnRemovedPost,
-  userIsMod,
-  notifyModsForPostOutsideThread,
-  banUserOutsideThread
 } from "./utils-async.js"
 
-import { CommentId, PostId } from "./types.js";
+//import { postContainsBannedDomain } from "./utils.js"
+//import { CommentId, PostId } from "./types.js";
 
 Devvit.configure({
   redis: true,
@@ -380,66 +367,20 @@ Devvit.addTrigger({
       );
       return; // Rest of the code only applies to posts with specified flair.
     }
-    // Get comment author info and check if they are a mod
-    const userId = event.author?.id!;
-    const username = event.author?.name!;
-    const authorIsMod = await userIsMod(username, context);
-    const modsExempt = (await context.settings.get("mods-exempt")) as boolean;
-    const userIsExempt = authorIsMod && modsExempt;
-    var commentRemoved = false;
-    var commentRemovedReason = ""; // needed if PM is sent to user
-    const postId = event.post?.id!;
-    const commentId = event.comment?.id!;
-    const postFlair = event.post?.linkFlair?.text ?? "";
-    // If everything looks good, this is where we remove duplicate comments and replies to comments.
-    if (event.type == "CommentCreate") {
-      const removeDuplicates = await context.settings.get("remove-duplicates") as boolean; //check if removing duplicates enabled
-      if (removeDuplicates) {
-        commentRemoved = await removeDuplicateComment(userId, postId, commentId, userIsExempt, context);
-        if (commentRemoved) commentRemovedReason = "duplicate";
-      }
-      // If comment not removed yet, remove replies according to setting.
-      if (!commentRemoved) {
-        const removeReplies = await context.settings.get("remove-replies") as boolean; //check if removing replies enabled
-        if (removeReplies) {
-          commentRemoved = await lockTopLevelCommentOrRemoveReply(commentId, userIsExempt, context);
-          if (commentRemoved) commentRemovedReason = "reply";
-        }
-      }
-    }
-    // If comment not removed yet, check user requirements.
-    if (!commentRemoved && !userIsExempt) {
-      const userFlair = event.author?.flair;
-      const karma = event.author?.karma!;
-      commentRemovedReason = await removeCommentAccordingToUserRequirements(commentId, userId, userFlair, karma, context);
-      commentRemoved = (commentRemovedReason != "");
-    }
-    // If comment still not removed, check comment content.
-    if (!commentRemoved && !userIsExempt) {
-      commentRemovedReason = await removeCommentAccordingToContentRequirements(event.comment?.id!, event.comment?.body!, context);
-      commentRemoved = (commentRemovedReason != "");
-    }
-    // If comment was removed and PM setting is enabled, send PM to user.
-    if (commentRemoved) {
-      // Optional: inform user via PM that their comment was removed and give a reason why.
-      const pmUserSetting = (await context.settings.get("pm-user")) as boolean;
-      if (pmUserSetting) {
-        const subredditName = context.subredditName!;
-        const postLink = event.post?.permalink!;
-        const commentLink = event.comment?.permalink!;
-        var reason = getReasonForRemoval(commentRemovedReason, subredditName);
-        reason += getReasonScope(postFlair);
-        pmUser(username, commentLink, postLink, reason, context);
-      }
-      // Optional: add mod note to user with reason for removal.
-      const modNoteSetting = (await context.settings.get("add-mod-note")) as boolean;
-      if (modNoteSetting) {
-        const noteText = `Comment removed: ${commentRemovedReason}. Post flair: ${postFlair}.`;
-        const subredditName = context.subredditName!;
-        const commentId = event.comment?.id! as CommentId;
-        await context.reddit.addModNote({ subreddit: subredditName, user: username, note: noteText, redditId: commentId });
-      }
-    }
+    await removeCommentInsideThread(
+      event.comment?.id!,
+      event.comment?.body!,
+      event.comment?.permalink!,
+      event.post?.id!,
+      event.post?.linkFlair?.text ?? "",
+      event.post?.permalink!,
+      event.author?.id!,
+      event.author?.name!,
+      event.author?.karma!,
+      event.author?.flair?.text,
+      event.type,
+      context
+    );
   },
 });
 
@@ -475,54 +416,17 @@ Devvit.addTrigger({
     // Check if removing posts is enabled
     const removePosts = await (context.settings.get("remove-posts")) as boolean;
     if (!removePosts) return; // If setting is disabled, don't do anything.
-    // Check if author is a mod and mods are exempt
-    const modsExempt = (await context.settings.get("mods-exempt")) as boolean;
-    const authorName = event.author?.name ?? "";
-    const authorIsMod = await userIsMod(authorName, context);
-    if (authorIsMod && modsExempt) return; // If author is a mod and mods are exempt, don't do anything.
-    // Check post content for link from domain list
-    const domainList = (await context.settings.get("domain-list")) as string;
-    const postTitle = event.post?.title ?? "";
-    const postText = event.post?.selftext ?? "";
-    const url = event.post?.url ?? "";
-    var containsDomain = postContainsBannedDomain(postTitle, postText, url, domainList);
-    if (!containsDomain) {
-      // If no positive match yet, check if the post is a crosspost.
-      const parentId = event.post?.crosspostParentId ?? "";
-      if (parentId != "") {
-        // If this is a crosspost, we need to check the parent post for links from the domain list as well.
-        const parentPost = await context.reddit.getPostById(parentId);
-        const parentTitle = parentPost.title ?? "";
-        const parentText = parentPost.body ?? "";
-        const parentUrl = parentPost.url ?? "";
-        containsDomain = postContainsBannedDomain(parentTitle, parentText, parentUrl, domainList);
-      };
-    }
-    // If a match was found, remove post and optionally comment on it.
-    if (containsDomain) {
-      const postId = event.post?.id! as PostId;
-      // Check if setting to comment on removed posts is enabled.
-      if (await context.settings.get("comment-on-posts"))
-        await commentOnRemovedPost(postId, context); // If setting is enabled, leave a comment.
-      // Check if setting to remove as spam is enabled.
-      const removeAsSpam = (await context.settings.get("remove-as-spam")) as boolean;
-      // Remove post and pass spam setting to removal method.
-      await context.reddit.remove(postId, removeAsSpam);
-      // Optional: Notify mods via modmail about removed post.
-      if (await context.settings.get("warn-modmail")) {
-        await notifyModsForPostOutsideThread(event.post?.permalink!, authorName, context);
-      }
-      // Optional: Add mod note to user with reason for removal.
-      if (await context.settings.get("add-mod-note")) {
-        const noteText = `Post removed: outside designated thread.`;
-        const subredditName = context.subredditName!;
-        await context.reddit.addModNote({ subreddit: subredditName, user: authorName, note: noteText, redditId: postId, label: "SPAM_WARNING" });
-      }
-      // Optional: Ban user if setting is enabled.
-      if (await context.settings.get("ban-user")) {
-        await banUserOutsideThread(authorName, postId, context);
-      }
-    }
+    // If we got here, we use the below function to determine if a post should be removed.
+    await removePostOutsideThread(
+      event.post?.id!,
+      event.post?.title ?? "",
+      event.post?.selftext ?? "",
+      event.post?.url ?? "",
+      event.post?.permalink!,
+      event.author?.name ?? "",
+      event.post?.crosspostParentId ?? "",
+      context
+    );
   },
 });
 

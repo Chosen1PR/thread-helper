@@ -1,11 +1,11 @@
 // Helper function to get key for redis hash that handles comments on a specific post by a specific user
 export function getKeyForCommentCount(postId: string, userId?: string) {
-  return `commentCount:${postId}`;
+  return `postCommentCount:${postId}`;
 }
 
 // Helper function to get key for redis hash that handles a comment's "seen" state
 export function getKeyForCommentSeenState(commentId: string) {
-  return commentId;
+  return `comment:${commentId}`;
 }
 
 // Helper function that tells you if the current comment limit in the config settings is even valid
