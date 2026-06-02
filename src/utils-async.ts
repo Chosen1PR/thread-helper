@@ -5,8 +5,6 @@ import {
 import {getExtendedDevvit} from "./protos.js";
 
 import {
-    getKeyForCommentCount,
-    getKeyForCommentSeenState,
     isValidKarmaSetting,
     isValidAccountAgeSetting,
     isValidBanDuration,
@@ -16,10 +14,25 @@ import {
     getReasonForRemoval,
     getReasonScope
 } from "./utils.js"
+
+import {
+  getAuthorsCommentCount,
+  resetAuthorsCommentCount,
+  deleteAuthorsCommentCount,
+  updateAuthorsCommentCount,
+  getSeenStateForCommentCreate,
+  getSeenStateForCommentDelete
+} from "./redis.js"
+
 import { CommentId, PostOrCommentId, PostId } from "./types.js";
 
-/////////////////////////////////////////////////// GENERAL HELPER FUNCTIONS ///////////////////////////////////////////////////
+// Helper function to determine if a post's flair corresponds to an applicable thread
+export async function isPostFlairApplicable(flairText: string, context: TriggerContext) {
+  const flairList = (await context.settings.get("flair-list") as string) ?? "";
+  return (flairText != "" && flairList != "" && textHasMatchInList(flairText, flairList));
+}
 
+// Helper function to determine if we should remove a comment inside of the referral megathread.
 export async function removeCommentInsideThread(
   commentId: string,
   commentBody: string,
@@ -87,7 +100,7 @@ export async function removeCommentInsideThread(
   }
 }
 
-// Remove comments outside of megathread.
+// Helper function to determine if we should remove a comment outside of the referral megathread.
 export async function removeCommentOutsideThread(
   commentId: string,
   commentBody: string,
@@ -138,6 +151,7 @@ export async function removeCommentOutsideThread(
   }
 }
 
+// Helper function to determine if we should remove a post outside of the referral megathread.
 export async function removePostOutsideThread(
   postId: string,
   postTitle: string,
@@ -225,6 +239,7 @@ async function removeDuplicateComment(
   return commentRemoved;
 }
 
+// Helper function to update a user's comment count in a post if the setting is on.
 export async function updateCommentCountOnDelete(commentId: string, postId: string, userId: string, context: TriggerContext) {
   var commentCount = (await getAuthorsCommentCount(userId, postId, context)) ?? 0;
   if (commentCount < 0)
@@ -467,14 +482,6 @@ async function removeCommentAccordingToContentRequirements(
   return commentRemovedReason;
 }
 
-// Helper function to determine if a post's flair corresponds to an applicable thread
-export async function isPostFlairApplicable(flairText: string, context: TriggerContext) {
-  const flairList = (await context.settings.get("flair-list") as string) ?? "";
-  return (flairText != "" && flairList != "" && textHasMatchInList(flairText, flairList));
-}
-
-
-
 // Helper function to PM a user when their comment is removed
 async function pmUser(
   username: string,
@@ -638,7 +645,7 @@ async function banUserOutsideThread(username: string, postOrCommentId: PostOrCom
       subredditName: subredditName,
       duration: duration,
       reason: 'Referral outside designated thread',
-      message: `You have been banned for sharing a link/code where you are not allowed to. This is against [our rules](https://www.reddit.com/mod/${subredditName}/rules).`,
+      message: `You were banned for sharing a link/code where you are not allowed to. This is against [our rules](/r/${subredditName}/about/rules).`,
       note: 'Referral outside designated thread',
       context: postOrCommentId
     });
@@ -653,98 +660,6 @@ async function banUserOutsideThread(username: string, postOrCommentId: PostOrCom
     });
   } catch (error) {
     console.log(`Error banning user u/${username} in r/${subredditName}: ${error}`);
-  }
-}
-
-///////////////////////////////////////////////////////// REDIS FUNCTIONS /////////////////////////////////////////////////////////
-
-// Helper function for getting user's comment count in a post.
-// Returns 0 if there are no comments but there *is* a Redis object.
-// Returns -1 if there is not Redis object.
-async function getAuthorsCommentCount(
-  userId: string,
-  postId: string,
-  context: TriggerContext
-) {
-  try {
-    const key = getKeyForCommentCount(postId, userId);
-    var countString = (await context.redis.hGet(key, userId)) ?? "";
-    if (countString == "") return -1;
-    const commentCount = Number(countString);
-    return commentCount;
-  }
-  catch { return 0; }
-}
-
-async function resetAuthorsCommentCount(
-  userId: string,
-  postId: string,
-  context: TriggerContext
-) {
-  try {
-    const key = getKeyForCommentCount(postId, userId);
-    await context.redis.hSet(key, { [userId]: "0" });
-  }
-  catch {} // do nothing
-}
-
-// Helper function for deleting a user's comment count in a post.
-// Useful if the comment count has reached 0.
-async function deleteAuthorsCommentCount(
-  userId: string,
-  postId: string,
-  context: TriggerContext
-) {
-  try {
-    const key = getKeyForCommentCount(postId, userId);
-    await context.redis.hDel(key, [userId]);
-  }
-  catch {} // do nothing
-}
-
-// Helper function for updating a user's comment count in a post.
-async function updateAuthorsCommentCount(
-  userId: string,
-  postId: string,
-  increment: number,
-  context: TriggerContext
-) {
-  try {
-    const key = getKeyForCommentCount(postId, userId);
-    await context.redis.hIncrBy(key, userId, increment);
-  }
-  catch {} // do nothing
-}
-
-// Helper function to get a comment creation event's "seen" state.
-// 'new' means a comment has never been seen before.
-// 'seen' means this app has already processed this comment before.
-// 'error' indicates a likely redis failure.
-async function getSeenStateForCommentCreate(commentId: string, context: TriggerContext): Promise<'new' | 'seen' | 'error'> {
-  try {
-    const key = getKeyForCommentSeenState(commentId);
-    const result = await context.redis.hSetNX(key, 'creationSeen', '1');
-    if (result == 1) return 'new'; // new comment, successfully marked as seen
-    else return 'seen'; // old comment, already seen
-  }
-  catch {
-    return 'error'; // redis failure
-  }
-}
-
-// Helper function to get a comment deletion event's "seen" state.
-// 'new' means a comment has never been seen before.
-// 'seen' means this app has already processed this comment before.
-// 'error' indicates a likely redis failure.
-async function getSeenStateForCommentDelete(commentId: string, context: TriggerContext): Promise<'new' | 'seen' | 'error'> {
-  try {
-    const key = getKeyForCommentSeenState(commentId);
-    const result = await context.redis.hSetNX(key, 'deletionSeen', '1');
-    if (result == 1) return 'new'; // new comment deletion event, successfully marked as seen
-    else return 'seen'; // old comment deletion event, already seen
-  }
-  catch {
-    return 'error'; // redis failure
   }
 }
 

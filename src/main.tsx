@@ -11,9 +11,6 @@ import {
   isPostFlairApplicable,
 } from "./utils-async.js"
 
-//import { postContainsBannedDomain } from "./utils.js"
-//import { CommentId, PostId } from "./types.js";
-
 Devvit.configure({
   redis: true,
   redditAPI: true,
@@ -333,7 +330,9 @@ Devvit.addSettings([
   },
 ]);
 
-// Button for config settings on devvit site
+// Button for config settings on Devvit site
+// Currently disabled (probably not needed)
+/*
 Devvit.addMenuItem({
   label: "Referral Thread Helper",
   description: "Settings",
@@ -345,6 +344,7 @@ Devvit.addMenuItem({
     );
   },
 });
+*/
 
 // Create comment trigger handler
 Devvit.addTrigger({
