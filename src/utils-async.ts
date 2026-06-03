@@ -255,7 +255,7 @@ export async function updateCommentCountOnDelete(commentId: string, postId: stri
     if (seenState == 'seen' || seenState == 'error') return; // If this deletion event has already been processed, do nothing.
     // If this is a new deletion event, update the comment count.
     if (commentCount == 1)
-      // If this was the last comment, delete the redis hash for this user.
+      // If this was the last comment, delete the user's comment count entirely.
       await deleteAuthorsCommentCount(userId, postId, context);
     else if (commentCount > 1)
       // If there are more comments, just decrement the count by 1.

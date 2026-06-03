@@ -1,6 +1,4 @@
-import {
-  TriggerContext,
-} from "@devvit/public-api";
+import { TriggerContext } from "@devvit/public-api";
 
 // Helper function to get key for redis hash that handles comments on a specific post by a specific user
 function getKeyForCommentCount(postId: string, userId?: string) {
@@ -30,6 +28,7 @@ export async function getAuthorsCommentCount(
   catch { return 0; }
 }
 
+// Helper function to set/reset a user's comment count in a post to 0.
 export async function resetAuthorsCommentCount(
   userId: string,
   postId: string,
