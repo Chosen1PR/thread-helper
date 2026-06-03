@@ -34,6 +34,9 @@ For even further automation with referral threads or other posts, feel free to c
 
 - Fixed an issue that caused some duplicate comments to not be removed.
 - Improved resilience to Developer Platform issues that may fire duplicate triggers for a single comment. This ensures the "one comment per thread" feature accurately tracks comments and avoids removing legitimate ones as duplicates.
+
+### Other
+
 - Many parts of the app were rewritten for better readability and maintainability, without impacting functionality.
 - Updated Devvit CLI to 0.13.0.
 

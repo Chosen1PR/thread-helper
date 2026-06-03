@@ -6,7 +6,7 @@
   "type": "module",
   "dependencies": {
     "@devvit/public-api": "0.13.0",
-    "vitest": "^3.2.2"
+    "vitest": "^4.1.8"
   },
   "devDependencies": {
     "devvit": "0.13.0",
