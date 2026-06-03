@@ -57,13 +57,13 @@ export async function removeCommentInsideThread(
   // If everything looks good, this is where we remove duplicate comments and replies to comments.
   if (eventType == "CommentCreate") {
     const removeDuplicates = await context.settings.get("remove-duplicates") as boolean; //check if removing duplicates enabled
+    const removeReplies = await context.settings.get("remove-replies") as boolean; //check if removing replies enabled
     if (removeDuplicates) {
-      commentRemoved = await removeDuplicateComment(userId, postId, commentId, userIsExempt, context);
+      commentRemoved = await removeDuplicateComment(userId, postId, commentId, userIsExempt, removeReplies, context);
       if (commentRemoved) commentRemovedReason = "duplicate";
     }
     // If comment not removed yet, remove replies according to setting.
     if (!commentRemoved) {
-      const removeReplies = await context.settings.get("remove-replies") as boolean; //check if removing replies enabled
       if (removeReplies) {
         commentRemoved = await lockTopLevelCommentOrRemoveReply(commentId, userIsExempt, context);
         if (commentRemoved) commentRemovedReason = "reply";
@@ -213,6 +213,7 @@ async function removeDuplicateComment(
   postId: string,
   commentId: string,
   userIsExempt: boolean,
+  removeReplies: boolean,
   context: TriggerContext
 ) {
   const seenState = await getSeenStateForCommentCreate(commentId, context);
@@ -230,6 +231,10 @@ async function removeDuplicateComment(
   if (commentCount >= 1 && !userIsExempt) {
     // Mod check here will depend on the "mods exempt" config setting.
     await context.reddit.remove(commentId, false);
+    if (removeReplies) {
+      const comment = await context.reddit.getCommentById(commentId);
+      if (comment) await comment.lock();
+    }
     commentRemoved = true;
   }
   // Step 3: Increment user's comment count in post.
@@ -272,6 +277,7 @@ async function lockTopLevelCommentOrRemoveReply(
     await comment.lock();
   else if (!userIsExempt) { // Not a top-level comment. Proceed with removal if user is not exempt.
     await comment.remove(false);
+    await comment.lock();
     commentRemoved = true;
   }
   return commentRemoved;
