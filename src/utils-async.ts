@@ -17,9 +17,8 @@ import {
 
 import {
   getAuthorsCommentCount,
-  resetAuthorsCommentCount,
   deleteAuthorsCommentCount,
-  updateAuthorsCommentCount,
+  incrementAuthorsCommentCount,
   getSeenStateForCommentCreate,
   getSeenStateForCommentDelete
 } from "./redis.js"
@@ -223,10 +222,6 @@ async function removeDuplicateComment(
   var commentRemoved = false;
   // Step 1: Get user's comment count in post. Set to 0 if the function returns a negative number.
   var commentCount = await getAuthorsCommentCount(userId, postId, context);
-  if (commentCount < 0) {
-    commentCount = 0;
-    await resetAuthorsCommentCount(userId, postId, context);
-  }
   // Step 2: If user is over limit, remove comment.
   if (commentCount >= 1 && !userIsExempt) {
     // Mod check here will depend on the "mods exempt" config setting.
@@ -238,7 +233,7 @@ async function removeDuplicateComment(
     commentRemoved = true;
   }
   // Step 3: Increment user's comment count in post.
-  await updateAuthorsCommentCount(userId, postId, 1, context);
+  await incrementAuthorsCommentCount(userId, postId, 1, context);
   // Even if this comment was removed in Step 2, any new comments will still increment the comment count for this user.
   // For the count to be decremented, the user must delete their own comment and "update with comment deletes" must be enabled.
   return commentRemoved;
@@ -247,8 +242,6 @@ async function removeDuplicateComment(
 // Helper function to update a user's comment count in a post if the setting is on.
 export async function updateCommentCountOnDelete(commentId: string, postId: string, userId: string, context: TriggerContext) {
   var commentCount = (await getAuthorsCommentCount(userId, postId, context)) ?? 0;
-  if (commentCount < 0)
-    commentCount = 0;
   if (commentCount > 0) {
     // If user has a comment count in this post, then check if we have seen this deletion event before.
     const seenState = await getSeenStateForCommentDelete(commentId, context);
@@ -259,7 +252,7 @@ export async function updateCommentCountOnDelete(commentId: string, postId: stri
       await deleteAuthorsCommentCount(userId, postId, context);
     else if (commentCount > 1)
       // If there are more comments, just decrement the count by 1.
-      await updateAuthorsCommentCount(userId, postId, -1, context);
+      await incrementAuthorsCommentCount(userId, postId, -1, context);
   }
 }
 

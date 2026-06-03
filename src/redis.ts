@@ -11,8 +11,6 @@ function getKeyForCommentSeenState(commentId: string) {
 }
 
 // Helper function for getting user's comment count in a post.
-// Returns 0 if there are no comments but there *is* a Redis object.
-// Returns -1 if there is not Redis object.
 export async function getAuthorsCommentCount(
   userId: string,
   postId: string,
@@ -21,9 +19,8 @@ export async function getAuthorsCommentCount(
   try {
     const key = getKeyForCommentCount(postId, userId);
     var countString = (await context.redis.hGet(key, userId)) ?? "";
-    if (countString == "") return -1;
-    const commentCount = Number(countString);
-    return commentCount;
+    if (countString == "") return 0;
+    else return Number(countString);
   }
   catch { return 0; }
 }
@@ -56,7 +53,7 @@ export async function deleteAuthorsCommentCount(
 }
 
 // Helper function for updating a user's comment count in a post.
-export async function updateAuthorsCommentCount(
+export async function incrementAuthorsCommentCount(
   userId: string,
   postId: string,
   increment: number,
