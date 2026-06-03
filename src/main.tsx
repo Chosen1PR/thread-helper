@@ -460,12 +460,14 @@ Devvit.addTrigger({
       // If we're here, time to lock/unlock the post.
       const postId = event.targetPost?.id!;
       const post = await context.reddit.getPostById(postId);
-      const postIsLocked = post.isLocked();
-      if (event.action == "sticky" && postIsLocked) {
-        await post.unlock();
-      }
-      else if (event.action == "unsticky" && !postIsLocked) {
-        await post.lock();
+      if (post) {
+        const postIsLocked = post.isLocked();
+        if (event.action == "sticky" && postIsLocked) {
+          await post.unlock();
+        }
+        else if (event.action == "unsticky" && !postIsLocked) {
+          await post.lock();
+        }
       }
     }
   },
