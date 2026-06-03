@@ -12,6 +12,7 @@ Do you have referral megathreads in your community for certain products or servi
 - Require links in thread comments.
 - Remove comments from outside the thread that contain a referral link.
 - Define regexes that comments must have or must not match.
+- Lock pinned (stickied) referral threads when they are unpinned.
 - Remove posts that contain referral links.
 - Message users privately from the bot account (not modmail) when their comment is removed and explain why.
 - Comment on posts that contain referral links.
@@ -27,6 +28,13 @@ For even further automation with referral threads or other posts, feel free to c
 ---
 
 ## Changelog
+
+### [0.1.21] (2026-06-03)
+
+#### Features
+
+- Added the option to lock pinned (stickied) referral threads when they are unpinned.
+- Removed the Settings menu item at subreddit level for a cleaner menu. Settings are still accessible from developers.reddit.com.
 
 ### [0.1.20] (2026-06-02)
 

@@ -43,6 +43,16 @@ Devvit.addSettings([
         defaultValue: "",
         scope: "installation",
       },
+      // Config setting for thread archiving (locking)
+      {
+        type: "boolean",
+        name: "lock-on-unpin",
+        label: "Lock threads on unpin",
+        helpText:
+          `If enabled, pinned (stickied) threads with the above post flair(s) will be locked when they are unpinned (useful for recurring threads). Also unlocks threads when they are pinned (useful for accidental unpins).`,
+        defaultValue: false,
+        scope: "installation",
+      },
       // Config setting for domain whitelist
       {
         type: "paragraph",
@@ -53,6 +63,7 @@ Devvit.addSettings([
         defaultValue: "",
         scope: "installation",
       },
+      
       // Config setting for removing posts outside of thread
       {
         type: "boolean",
@@ -427,6 +438,36 @@ Devvit.addTrigger({
       event.post?.crosspostParentId ?? "",
       context
     );
+  },
+});
+
+// Lock referral threads when unpinned; unlock when pinned.
+Devvit.addTrigger({
+  events: ["ModAction"],
+  onEvent: async (event, context) => {
+    //console.log(event.action);
+    if (event.action == "sticky" || event.action == "unsticky") {
+      const commentId = event.targetComment?.id;
+      if (commentId) return; // If a comment is being pinned or unpinned instead of a post, do nothing.
+      const postFlairText = event.targetPost?.linkFlair?.text ?? "";
+      if (postFlairText == "") return; // If the post has no flair, do nothing.
+      const appEnabled = (await context.settings.get("enable-app")) as boolean;
+      if (!appEnabled) return; // If the app is not enabled, do nothing.
+      const lockOnUnsticky = (await context.settings.get("lock-on-unpin")) as boolean;
+      if (!lockOnUnsticky) return; // If the setting for locking is not enabled, do nothing.
+      const postLockStateShouldChange = await isPostFlairApplicable(postFlairText, context);
+      if (!postLockStateShouldChange) return; // If the post flair is not applicable, do nothing.
+      // If we're here, time to lock/unlock the post.
+      const postId = event.targetPost?.id!;
+      const post = await context.reddit.getPostById(postId);
+      const postIsLocked = post.isLocked();
+      if (event.action == "sticky" && postIsLocked) {
+        await post.unlock();
+      }
+      else if (event.action == "unsticky" && !postIsLocked) {
+        await post.lock();
+      }
+    }
   },
 });
 
