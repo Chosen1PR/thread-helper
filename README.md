@@ -29,6 +29,10 @@ For even further automation with referral threads or other posts, feel free to c
 
 ## Changelog
 
+### [0.1.22] (2026-07-01)
+
+- Implemented a workaround for when Devvit issues cause invalid usernames and post/comment bodies.
+
 ### [0.1.21] (2026-06-03)
 
 #### Features

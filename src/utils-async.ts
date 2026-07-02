@@ -32,7 +32,7 @@ export async function isPostFlairApplicable(flairText: string, context: TriggerC
 }
 
 // Helper function to determine if we should remove a comment inside of the referral megathread.
-export async function removeCommentInsideThread(
+export async function checkCommentInsideThreadForRemoval(
   commentId: string,
   commentBody: string,
   commentLink: string,
@@ -100,7 +100,7 @@ export async function removeCommentInsideThread(
 }
 
 // Helper function to determine if we should remove a comment outside of the referral megathread.
-export async function removeCommentOutsideThread(
+export async function checkCommentOutsideThreadForRemoval(
   commentId: string,
   commentBody: string,
   username: string,
@@ -151,7 +151,7 @@ export async function removeCommentOutsideThread(
 }
 
 // Helper function to determine if we should remove a post outside of the referral megathread.
-export async function removePostOutsideThread(
+export async function checkPostOutsideThreadForRemoval(
   postId: string,
   postTitle: string,
   postBody: string,

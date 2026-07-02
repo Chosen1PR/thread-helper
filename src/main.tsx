@@ -4,12 +4,23 @@ import {
 } from "@devvit/public-api";
 
 import {
-  removeCommentInsideThread,
-  removeCommentOutsideThread,
-  removePostOutsideThread,
+  checkCommentInsideThreadForRemoval,
+  checkCommentOutsideThreadForRemoval,
+  checkPostOutsideThreadForRemoval,
   updateCommentCountOnDelete,
   isPostFlairApplicable,
 } from "./utils-async.js"
+
+import {
+  getEventValue,
+  getEventValueAsNumber
+} from "./utils.js"
+
+import {
+  isValidBody,
+  isValidUsername,
+  isValidUserId
+} from "./utils.js"
 
 Devvit.configure({
   redis: true,
@@ -364,34 +375,37 @@ Devvit.addTrigger({
     // Check if app is enabled
     const appEnabled = await context.settings.get("enable-app");
     if (!appEnabled) return; // If app is not enabled, don't do anything.
+    let commentId = getEventValue(event, ['comment', 'id']),
+    commentBody = getEventValue(event, ['comment', 'body']),
+    userId = getEventValue(event, ['author', 'id']),
+    username = getEventValue(event, ['author', 'name']),
+    commentLink = getEventValue(event, ['comment', 'permalink']),
+    postId = getEventValue(event, ['post', 'id']),
+    postLink = getEventValue(event, ['post', 'permalink']),
+    postFlair = getEventValue(event, ['post', 'linkFlair', 'text']),
+    userKarma = getEventValueAsNumber(event, ['author', 'karma']),
+    userFlair = getEventValue(event, ['author', 'flair', 'text']),
+    eventType = getEventValue(event, ['type']);
+    const validBody = isValidBody(commentBody),
+    validUsername = isValidUsername(username),
+    validUserId = isValidUserId(userId);
+    if (!validBody || !validUsername || !validUserId) {
+      const comment = await context.reddit.getCommentById(commentId);
+      if (comment) {
+        if (!validBody) commentBody = comment.body;
+        if (!validUsername) username = comment.authorName;
+        if (!validUserId) userId = comment.authorId ?? 't2_0';
+      }
+    }
     // Check if this post flair applies
-    const postFlairIsApplicable = await isPostFlairApplicable(event.post?.linkFlair?.text ?? "", context);
+    const postFlairIsApplicable = await isPostFlairApplicable(postFlair, context);
     if (!postFlairIsApplicable) {
       // If this post does not match any flair, check if the comment is allowed outside of the thread.
-      await removeCommentOutsideThread(
-        event.comment?.id!,
-        event.comment?.body!,
-        event.author?.name!,
-        event.post?.permalink!,
-        event.comment?.permalink!,
-        context
-      );
+      await checkCommentOutsideThreadForRemoval(commentId, commentBody, username, postLink, commentLink, context);
       return; // Rest of the code only applies to posts with specified flair.
     }
-    await removeCommentInsideThread(
-      event.comment?.id!,
-      event.comment?.body!,
-      event.comment?.permalink!,
-      event.post?.id!,
-      event.post?.linkFlair?.text ?? "",
-      event.post?.permalink!,
-      event.author?.id!,
-      event.author?.name!,
-      event.author?.karma!,
-      event.author?.flair?.text,
-      event.type,
-      context
-    );
+    await checkCommentInsideThreadForRemoval(commentId, commentBody, commentLink, postId, postFlair, postLink,
+      userId, username, userKarma, userFlair, eventType, context);
   },
 });
 
@@ -399,7 +413,7 @@ Devvit.addTrigger({
 Devvit.addTrigger({
   event: "CommentDelete",
   onEvent: async (event, context) => {
-    //console.log(`A new comment was deleted: ${JSON.stringify(event)}`);
+    console.log(`A new comment was deleted: ${JSON.stringify(event)}`);
     const source = event.source.valueOf(); // 3 = mod; 2 = admin; 1 = user; 0 = unknown; -1 = unrecognized
     if (source != 1) return; // If a comment was not deleted by its author, don't do anything.
     // Check if app is enabled
@@ -410,9 +424,9 @@ Devvit.addTrigger({
     const updateDelete = await context.settings.get("update-comment-delete"); //check if update with delete enabled
     if (!updateDelete) return; // If not enabled, don't do anything.
     // If we got here, then "remove duplicates" is enabled and "update with comment deletes" is enabled.
-    const userId = event.author?.id!;
-    const postId = event.postId!;
-    const commentId = event.commentId!;
+    const userId = getEventValue(event, ['author', 'id']);
+    const postId = getEventValue(event, ['postId']);
+    const commentId = getEventValue(event, ['commentId']);
     await updateCommentCountOnDelete(commentId, postId, userId, context);
   },
 });
@@ -427,17 +441,24 @@ Devvit.addTrigger({
     // Check if removing posts is enabled
     const removePosts = await (context.settings.get("remove-posts")) as boolean;
     if (!removePosts) return; // If setting is disabled, don't do anything.
+    let id = getEventValue(event, ['post', 'id']),
+    title = getEventValue(event, ['post', 'title']),
+    body = getEventValue(event, ['post', 'selftext']),
+    url = getEventValue(event, ['post', 'url']),
+    permalink = getEventValue(event, ['post', 'permalink']),
+    username = getEventValue(event, ['author', 'name']),
+    crosspostId = getEventValue(event, ['post', 'crosspostParentId']);
+    const validBody = isValidBody(body),
+    validUsername = isValidUsername(username);
+    if (!validBody || !validUsername) {
+      const post = await context.reddit.getPostById(id);
+      if (post) {
+        if (!validBody) body = post.body ?? '';
+        if (!validUsername) username = post.authorName;
+      }
+    }
     // If we got here, we use the below function to determine if a post should be removed.
-    await removePostOutsideThread(
-      event.post?.id!,
-      event.post?.title ?? "",
-      event.post?.selftext ?? "",
-      event.post?.url ?? "",
-      event.post?.permalink!,
-      event.author?.name ?? "",
-      event.post?.crosspostParentId ?? "",
-      context
-    );
+    await checkPostOutsideThreadForRemoval(id, title, body, url, permalink, username, crosspostId, context);
   },
 });
 
@@ -446,10 +467,11 @@ Devvit.addTrigger({
   events: ["ModAction"],
   onEvent: async (event, context) => {
     //console.log(event.action);
-    if (event.action == "sticky" || event.action == "unsticky") {
-      const commentId = event.targetComment?.id;
-      if (commentId) return; // If a comment is being pinned or unpinned instead of a post, do nothing.
-      const postFlairText = event.targetPost?.linkFlair?.text ?? "";
+    const modAction = getEventValue(event, ['action']);
+    if (modAction == "sticky" || modAction == "unsticky") {
+      const commentId = getEventValue(event, ['targetComment', 'id']);
+      if (commentId != '') return; // If a comment is being pinned or unpinned instead of a post, do nothing.
+      const postFlairText = getEventValue(event, ['targetPost', 'linkFlair', 'text']);
       if (postFlairText == "") return; // If the post has no flair, do nothing.
       const appEnabled = (await context.settings.get("enable-app")) as boolean;
       if (!appEnabled) return; // If the app is not enabled, do nothing.
@@ -458,14 +480,14 @@ Devvit.addTrigger({
       const postLockStateShouldChange = await isPostFlairApplicable(postFlairText, context);
       if (!postLockStateShouldChange) return; // If the post flair is not applicable, do nothing.
       // If we're here, time to lock/unlock the post.
-      const postId = event.targetPost?.id!;
+      const postId = getEventValue(event, ['targetPost', 'id']) ?? '';
       const post = await context.reddit.getPostById(postId);
       if (post) {
         const postIsLocked = post.isLocked();
-        if (event.action == "sticky" && postIsLocked) {
+        if (modAction == "sticky" && postIsLocked) {
           await post.unlock();
         }
-        else if (event.action == "unsticky" && !postIsLocked) {
+        else if (modAction == "unsticky" && !postIsLocked) {
           await post.lock();
         }
       }
