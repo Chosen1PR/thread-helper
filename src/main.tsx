@@ -469,8 +469,9 @@ Devvit.addTrigger({
     //console.log(event.action);
     const modAction = getEventValue(event, ['action']);
     if (modAction == "sticky" || modAction == "unsticky") {
-      const commentId = getEventValue(event, ['targetComment', 'id']);
-      if (commentId != '') return; // If a comment is being pinned or unpinned instead of a post, do nothing.
+      const postId = getEventValue(event, ['targetPost', 'id']),
+      commentId = getEventValue(event, ['targetComment', 'id']);
+      if (postId == '' || commentId != '') return; // If a comment is being pinned or unpinned instead of a post, do nothing.
       const postFlairText = getEventValue(event, ['targetPost', 'linkFlair', 'text']);
       if (postFlairText == "") return; // If the post has no flair, do nothing.
       const appEnabled = (await context.settings.get("enable-app")) as boolean;
@@ -480,7 +481,6 @@ Devvit.addTrigger({
       const postLockStateShouldChange = await isPostFlairApplicable(postFlairText, context);
       if (!postLockStateShouldChange) return; // If the post flair is not applicable, do nothing.
       // If we're here, time to lock/unlock the post.
-      const postId = getEventValue(event, ['targetPost', 'id']) ?? '';
       const post = await context.reddit.getPostById(postId);
       if (post) {
         const postIsLocked = post.isLocked();
